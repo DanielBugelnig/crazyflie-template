@@ -28,12 +28,42 @@ from .ai_deck import worker as ai_worker
 from .ai_deck import AI_Deck, AIDeckError
 
 class SwarmError(Exception):
+    """Generic exception for CrazySwarm-related failures.
+
+    This exception is raised for high-level swarm operations such as scanning,
+    starting, stopping, and coordinating Crazyflies and AI decks.
+
+    Args:
+        message (str, optional): Human-readable error description. Defaults to "".
+    """
     def __init__(self, message=""):
         # Swarm Error
         super().__init__(message)
         return
     
 class _SwarmMember:
+    """Container for a single swarm member (Crazyflie + optional AI Deck).
+
+    Holds identifiers, timing parameters, synchronization primitives, and shared
+    state objects used by the worker thread/process.
+
+    Attributes:
+        address (str): Crazyflie radio URI/address (e.g., 'radio://0/80/2M/E7E7E7E7E7').
+        name (str): Human-readable short name derived from the address.
+        mac (str): AI deck MAC address if paired/known, else empty string.
+        ip (str): AI deck IPv4 address if detected, else empty string.
+        drone_delay (float): Sleep interval (seconds) between drone control steps.
+        ai_delay (float): Sleep interval (seconds) between AI deck steps.
+        cf_process (Thread | None): Thread running the Crazyflie worker.
+        ai_process (Process | None): Process running the AI deck worker.
+        value_manager (StateManager): Factory for shared state objects.
+        lock (multiprocessing.synchronize.Lock): Inter-process lock for this member.
+        image_counter (Counter): Shared counter of saved images.
+        position_counter (Counter): Shared counter of saved positions.
+        flag (Flag): Shared flags for lifecycle and synchronization.
+        next_position (State): Target state/position for the next command.
+        current_state (State): Last known measured/estimated state.
+    """
     # data structure for swarm members
     def __init__(self):
         # identifiers
@@ -58,7 +88,14 @@ class _SwarmMember:
         return
 
 class CrazySwarm(BaseClass):
-    # base class for swarm control
+    """High-level controller for scanning and coordinating a Crazyflie swarm.
+
+    This class discovers Crazyflie 2.1 drones via radio, associates them with
+    AI decks discovered on the local network, and manages their life cycle.
+    Each drone is handled by a worker thread; each AI deck is handled by a
+    separate process to isolate compute/IO workloads.
+    """
+
 
     def __init__(self):
         # initialize Swarm object
@@ -71,7 +108,11 @@ class CrazySwarm(BaseClass):
         return
     
     def logging(self, enable, file, level):
-        # set up logging
+        """Initialize a CrazySwarm instance.
+
+        Sets up internal member storage, output directory handling, and a
+        thread-level radio lock to serialize low-level radio operations.
+        """
         super().logging(enable=enable, file=file, level=level, name="Swarm")
         if enable and file:
             self._output_directory = self.get_path() + os.sep + "datasets" + os.sep + self._logging_directory.split(os.sep)[-1]
@@ -79,14 +120,31 @@ class CrazySwarm(BaseClass):
         return
     
     def get_directory(self):
-        # return the output directory
-        # create an output directory if doesn't exist
+        """Return (and ensure) the current output directory for datasets.
+
+        If no dedicated dataset directory exists yet for this session, one is
+        created under `<project_root>/datasets`.
+
+        Returns:
+            str: Absolute path to the output directory used by workers.
+        """
         if self._output_directory == self.get_path():
             self._output_directory = self.create_directory(self.get_path() + os.sep + "datasets")
         return self._output_directory
     
     def scan(self):
-        # scan for swarm members (CrazyFlies, with recognized AI decks)
+        """Scan for Crazyflie radios and associated AI decks.
+
+        Performs a radio scan using `cflib` and a local network scan for AI decks,
+        then builds an internal list of `_SwarmMember` objects, pairing drones to
+        decks via the configured MAC lookup.
+
+        Returns:
+            list[str]: List of Crazyflie radio addresses found.
+
+        Raises:
+            SwarmError: If no drones or no AI decks are found, or scanning fails.
+        """
         try:
             radios = self._scan_cf()
             clients = self._scan_ai()
@@ -112,13 +170,32 @@ class CrazySwarm(BaseClass):
         return radios
     
     def set_delay(self, delay_s_drone:float, delay_s_deck:float):
-        # set the wait time for each thread
+        """Set the loop sleep delays for drone and AI deck workers.
+
+        Args:
+            delay_s_drone (float): Sleep interval (seconds) for the Crazyflie worker thread.
+            delay_s_deck (float): Sleep interval (seconds) for the AI deck worker process.
+
+        Returns:
+            None
+        """
         for member in self._members:
             member.drone_delay = delay_s_drone
             member.ai_delay = delay_s_deck
         return
     
     def start(self):
+        """Launch worker thread/process for each swarm member and wait for readiness.
+
+        Ensures a dataset output directory exists, creates and starts:
+        - one `Thread` per Crazyflie running `cf_worker`
+        - one `Process` per AI deck running `ai_worker`
+
+        Blocks until each member's `Flag` indicates a successful connection.
+
+        Raises:
+            SwarmError: If any member fails to initialize or connect.
+        """
         # create an output directory
         if self._output_directory == self.get_path():
             self._output_directory = self.create_directory(self.get_path() + os.sep + "datasets")
@@ -170,6 +247,17 @@ class CrazySwarm(BaseClass):
         return
     
     def arm(self, drone_index:int=None):
+        """Arm one or all Crazyflies for flight (set 'ready' flag).
+
+        If `drone_index` is provided and valid, arms only that drone.
+        Otherwise, arms all connected drones.
+
+        Args:
+            drone_index (int | None): Index of the drone to arm; if None, arm all.
+
+        Returns:
+            None
+        """
         # enable flight with drones
         with self._radio_lock:
             try:
@@ -184,6 +272,14 @@ class CrazySwarm(BaseClass):
         return
     
     def stop(self):
+        """Gracefully stop all worker thread/process pairs in the swarm.
+
+        Sets the exit flag for each member, then joins the AI deck process
+        and the Crazyflie thread to ensure clean shutdown.
+
+        Returns:
+            None
+        """
         # stop all members (separate processes)
         for member in self._members:
             # set exit flag
@@ -198,6 +294,18 @@ class CrazySwarm(BaseClass):
     """ ---------------------------------------------------------------------------- """
     
     def land(self, positions:list[State]=None):
+        """Command all drones to land, optionally at specified target positions.
+
+        If `positions` is None, each drone lands at its current location.
+        Otherwise, each drone lands at the corresponding position in `positions`.
+
+        Args:
+            positions (list[State] | None): Target landing positions per drone.
+
+        Raises:
+            SwarmError: If the number of positions does not match the swarm size,
+                or if a member access fails.
+        """
         # land with all drones to the required positions, or where they are
         try:
             for index in range(len(self._members)):
@@ -213,6 +321,16 @@ class CrazySwarm(BaseClass):
         return
     
     def fly(self, positions:list[State], photo:bool=True):
+        """Command all drones to fly to target positions (optionally save photo).
+
+        Args:
+            positions (list[State]): Desired target states/poses for each drone.
+            photo (bool): If True, mark the position as one where an image should be saved.
+
+        Raises:
+            SwarmError: If the number of positions does not match the swarm size,
+                or if a member access fails.
+        """
         # fly with all drones to the required positions
         try:
             for index in range(len(self._members)):
@@ -225,6 +343,14 @@ class CrazySwarm(BaseClass):
         return
     
     def get_state(self):
+        """Get the current measured/estimated state for each drone.
+
+        Returns:
+            list[State]: Shallow copies of each drone's current state.
+
+        Raises:
+            SwarmError: If a member access fails.
+        """
         # return a list of states with the current states of the drones
         states = []
         try:
@@ -235,6 +361,18 @@ class CrazySwarm(BaseClass):
         return states
     
     def arrived(self, photo:bool=True):
+        """Check if all drones reached their targets (and optionally saved photos).
+
+        Args:
+            photo (bool): If True, require that the 'position saved' flag is set;
+                otherwise only check arrival without save.
+
+        Returns:
+            bool: True if every drone reports arrival (and photo saved if requested).
+
+        Raises:
+            SwarmError: If a member access fails.
+        """
         # check if all drones arrived at the desired locations and made a picture
         try:
             arrived = True
@@ -249,6 +387,17 @@ class CrazySwarm(BaseClass):
     """ ---------------------------------------------------------------------------- """
 
     def land_single(self, index:int, position:State=None):
+        """Land a single drone, optionally at a specified position.
+
+        If `position` is None, the drone lands at its current location.
+
+        Args:
+            index (int): Index of the drone within the swarm.
+            position (State | None): Target landing state/pose.
+
+        Raises:
+            SwarmError: If the drone index is invalid.
+        """
         # land with a signle drone
         try:
             if position == None:
@@ -274,6 +423,18 @@ class CrazySwarm(BaseClass):
         return
     
     def fly_single(self, index:int, position:State, photo:bool=True):
+        """Command a single drone to fly to a given position.
+
+        Optionally flag the position to trigger image capture on arrival.
+
+        Args:
+            index (int): Drone index within the swarm.
+            position (State): Target state/pose to reach.
+            photo (bool): If True, signal that the position should trigger a save.
+
+        Raises:
+            SwarmError: If the drone index is invalid.
+        """
         # fly with a single drone
         try:
             with self._members[index].lock:
@@ -293,6 +454,17 @@ class CrazySwarm(BaseClass):
         return
     
     def get_state_single(self, index:int):
+        """Return a copy of the current state for a single drone.
+
+        Args:
+            index (int): Drone index within the swarm.
+
+        Returns:
+            State: A new `State` object populated with the drone's current values.
+
+        Raises:
+            SwarmError: If the drone index is invalid.
+        """
         # get the state of a single drone
         try:
             result = State()
@@ -310,6 +482,19 @@ class CrazySwarm(BaseClass):
             raise SwarmError("drone not found")
         
     def arrived_single(self, index:int, photo:bool=True):
+        """Check arrival status for a single drone (and optional photo save).
+
+        Args:
+            index (int): Drone index within the swarm.
+            photo (bool): If True, require that 'position saved' is True; otherwise
+                only require arrival without save.
+
+        Returns:
+            bool: True if the arrival condition is satisfied; False otherwise.
+
+        Raises:
+            SwarmError: If the drone index is invalid.
+        """
         # check if the drone arrived at the destination and has made a picture
         try:
             if photo:
@@ -323,17 +508,32 @@ class CrazySwarm(BaseClass):
     """ ---------------------------------------------------------------------------- """
 
     def get_count(self):
-        # return the number of swarm members
+        """Return the number of discovered/registered swarm members.
+
+        Returns:
+            int: Count of `_SwarmMember` objects currently managed.
+        """
         return self._count
 
     """ ---------------------------------------------------------------------------- """
 
     def _scan_cf(self):
+        """Scan for Crazyflie devices via radio.
+
+        Uses `cflib.crtp.scan_interfaces` for each configured address pattern,
+        returning a list of available radio URIs.
+
+        Returns:
+            list[str]: List of Crazyflie radio addresses found.
+
+        Raises:
+            SwarmError: If no drones are discovered.
+        """
         # scan for CrazyFlies, return the addresses
         available = []
         self.print("scanning for drones", self.LogLevel.message)
         cflib.crtp.init_drivers()   # initialize the low level drivers
-        for address in CRAZYFLIES:   #996028180480):
+        for address in CRAZYFLIES:   
             temp = cflib.crtp.scan_interfaces(address=int(address[-10:],16))
             try:
                 available.append(temp[0])
@@ -354,7 +554,18 @@ class CrazySwarm(BaseClass):
     """ ---------------------------------------------------------------------------- """
 
     def _scan_ai(self):
-        # scan for AI decks, return the (mac, ip) pairs
+        """Scan local networks for AI Decks and return recognized (MAC, IP) pairs.
+
+        Ensures Wi-Fi is connected/configured through `AI_Deck` helper, then uses
+        `arp -a` output to find responding devices. Filters devices by known MACs
+        from `MAC_LOOKUP`.
+
+        Returns:
+            list[tuple[str, str]]: List of `(mac, ip)` pairs for recognized AI decks.
+
+        Raises:
+            SwarmError: If Wi-Fi cannot be prepared/verified or no decks are found.
+        """
         try:
             helper = AI_Deck()
             helper.logging(self._logging, self._logging_file, self._logging_level, self._logging_directory)
@@ -396,6 +607,14 @@ class CrazySwarm(BaseClass):
         return addresses
     
     def get_wifi_ip(self):
+        """Return the IPv4 address of the active Wi-Fi interface, if any.
+
+        Scans network interfaces for those typically named like Wi-Fi (e.g., 'wlp*',
+        'wlan*') and returns the first IPv4 address found.
+
+        Returns:
+            str: IPv4 address as a string, or "No Wi-Fi IP found" if none detected.
+        """
         for interface, addrs in psutil.net_if_addrs().items():
             if "wlp" in interface or "wlan" in interface: 
                 for addr in addrs:
