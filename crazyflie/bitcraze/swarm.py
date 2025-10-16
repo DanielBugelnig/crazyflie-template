@@ -171,26 +171,24 @@ class CrazySwarm(BaseClass):
     
     def arm(self, drone_index:int=None):
         # enable flight with drones
-        self._radio_lock.acquire()
-        try:
-            if self._members[drone_index].flag.get_connected():
-                self.print(self._members[drone_index].address + " is ready to fly", self.LogLevel.message)
-                self._members[drone_index].flag.set_ready()
-        except (IndexError, TypeError):
-            for member in self._members:
-                if member.flag.get_connected():
-                    self.print(member.address + " is ready to fly", self.LogLevel.message)
-                    member.flag.set_ready()
-        self._radio_lock.release()
+        with self._radio_lock:
+            try:
+                if self._members[drone_index].flag.get_connected():
+                    self.print(self._members[drone_index].address + " is ready to fly", self.LogLevel.message)
+                    self._members[drone_index].flag.set_ready()
+            except (IndexError, TypeError):
+                for member in self._members:
+                    if member.flag.get_connected():
+                        self.print(member.address + " is ready to fly", self.LogLevel.message)
+                        member.flag.set_ready()
         return
     
     def stop(self):
         # stop all members (separate processes)
         for member in self._members:
             # set exit flag
-            member.lock.acquire()
-            member.flag.set_exit()
-            member.lock.release()
+            with member.lock:
+                member.flag.set_exit()
             member.ai_process.join()
             self.print("deck " + member.mac + " stopped", self.LogLevel.message)
             member.cf_process.join()
@@ -255,23 +253,21 @@ class CrazySwarm(BaseClass):
         try:
             if position == None:
                 # land everything where they are
-                self._members[index].lock.acquire()
-                self._members[index].next_position.set_grounded(True)
-                self._members[index].next_position.set_x(None)
-                self._members[index].flag.set_position_updated()
-                self._members[index].lock.release()
+                with self._members[index].lock:
+                    self._members[index].next_position.set_grounded(True)
+                    self._members[index].next_position.set_x(None)
+                    self._members[index].flag.set_position_updated()
             else:
                 # land on the required position
-                self._members[index].lock.acquire()
-                self._members[index].next_position.set_x(position.get_x())
-                self._members[index].next_position.set_y(position.get_y())
-                self._members[index].next_position.set_z(position.get_z())
-                self._members[index].next_position.set_yaw(position.get_yaw())
-                self._members[index].next_position.set_pitch(position.get_pitch())
-                self._members[index].next_position.set_roll(position.get_roll())
-                self._members[index].next_position.set_grounded(True)
-                self._members[index].flag.set_position_updated()
-                self._members[index].lock.release()
+                with self._members[index].lock:
+                    self._members[index].next_position.set_x(position.get_x())
+                    self._members[index].next_position.set_y(position.get_y())
+                    self._members[index].next_position.set_z(position.get_z())
+                    self._members[index].next_position.set_yaw(position.get_yaw())
+                    self._members[index].next_position.set_pitch(position.get_pitch())
+                    self._members[index].next_position.set_roll(position.get_roll())
+                    self._members[index].next_position.set_grounded(True)
+                    self._members[index].flag.set_position_updated()
         except IndexError:
             self.print("drone not found", self.LogLevel.error)
             raise SwarmError("drone not found")
@@ -280,18 +276,17 @@ class CrazySwarm(BaseClass):
     def fly_single(self, index:int, position:State, photo:bool=True):
         # fly with a single drone
         try:
-            self._members[index].lock.acquire()
-            self._members[index].next_position.set_x(position.get_x())
-            self._members[index].next_position.set_y(position.get_y())
-            self._members[index].next_position.set_z(position.get_z())
-            self._members[index].next_position.set_yaw(position.get_yaw())
-            self._members[index].next_position.set_pitch(position.get_pitch())
-            self._members[index].next_position.set_roll(position.get_roll())
-            if photo:
-                self._members[index].flag.set_position_updated()
-            else:
-                self._members[index].flag.set_position_updated_no_save()
-            self._members[index].lock.release()
+            with self._members[index].lock:
+                self._members[index].next_position.set_x(position.get_x())
+                self._members[index].next_position.set_y(position.get_y())
+                self._members[index].next_position.set_z(position.get_z())
+                self._members[index].next_position.set_yaw(position.get_yaw())
+                self._members[index].next_position.set_pitch(position.get_pitch())
+                self._members[index].next_position.set_roll(position.get_roll())
+                if photo:
+                    self._members[index].flag.set_position_updated()
+                else:
+                    self._members[index].flag.set_position_updated_no_save()
         except IndexError:
             self.print("drone not found", self.LogLevel.error)
             raise SwarmError("drone not found")
