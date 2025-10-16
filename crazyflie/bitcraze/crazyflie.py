@@ -35,6 +35,8 @@ Year:
     2025
 """
 
+from pathlib import Path  # file paths
+from copy import deepcopy
 import cflib.crtp   # connection through radio link
 from cflib.crazyflie import Crazyflie   # communicate with the drone
 from cflib.crazyflie.syncCrazyflie import SyncCrazyflie # synchronous behaviour
@@ -408,7 +410,7 @@ class CrazyFlie(BaseClass):
             State: A copy-like object with x, y, z, roll, pitch, yaw, battery.
         """
         # return the state of the drone
-        return self._current_state
+        return deepcopy(self._current_state)
     
     def set_delay(self, time_s:float):
         """Set the delay between commander iterations.
@@ -743,9 +745,8 @@ class CrazyFlie(BaseClass):
                         break
                     else:
                         # set setpoint
-                        self._lock.acquire()
-                        coordinates = self._next_position
-                        self._lock.release()
+                        with self._lock:
+                            coordinates = deepcopy(self._next_position)
                         angle_diff = self._angle_diff(coordinates.yaw,self._current_state.yaw)
                         # check against the maximum allowed rotation
                         if abs(angle_diff) > 45:
@@ -757,11 +758,10 @@ class CrazyFlie(BaseClass):
                 sleep(self._delay)
             # land
             self.print(f"Drone {self._name} landing", self.LogLevel.info)
-            self._lock.acquire()
-            if not isinstance(self._landing_position, State):
-                self._landing_position = self._current_state
-                self._landing_position.z = 0
-            self._lock.release()
+            with self._lock:
+                if not isinstance(self._landing_position, State):
+                    self._landing_position = self._current_state
+                    self._landing_position.z = 0
             self._scf.cf.commander.send_position_setpoint(self._landing_position.x, self._landing_position.y, self._landing_position.z, self._landing_position.yaw)
             sleep(3)
             self.print("landing succeeded", self.LogLevel.debug)
@@ -809,10 +809,12 @@ class CrazyFlie(BaseClass):
             var_x_history = [1000] * 10
             var_z_history = [1000] * 10
             threshold = 0.001
+            timeout = 20  # seconds
+            elapsed = 0.0
             self.get_radio()
             with SyncLogger(self._scf, log_config) as logger:
                 for log_entry in logger:
-                    sleep(0.1)
+                    sleep(0.1); elapsed += 0.1
                     data = log_entry[1]
                     var_x_history.append(data["kalman.varPX"])
                     var_x_history.pop(0)
@@ -827,6 +829,9 @@ class CrazyFlie(BaseClass):
                     min_z = min(var_z_history)
                     max_z = max(var_z_history)
                     if (max_x - min_x) < threshold and (max_y - min_y) < threshold and (max_z - min_z) < threshold:
+                        break
+                    if elapsed >= timeout:
+                        self.print(f"Drone {self._name} estimator timeout after {timeout} seconds", self.LogLevel.warning)
                         break
         except KeyboardInterrupt:
             raise KeyboardInterrupt
@@ -881,7 +886,14 @@ class CrazyFlie(BaseClass):
             pass
         self.print(f"Drone {self._name} didn't reach the destination", self.LogLevel.info)
         return False    # didn't arrive
-
+    
+    def _valid_pose(self, s: State) -> bool:
+        try:
+            vals = [s.x, s.y, s.z, s.yaw]
+            return all(v is not None for v in vals)
+        except Exception:
+            return False
+        
     def fly(self, position:State):
         """Update the next setpoint to fly towards.
 
@@ -898,13 +910,11 @@ class CrazyFlie(BaseClass):
             None
         """
         # go to position
-        if isinstance(position, State):
-            self._lock.acquire()
-            self._next_position = position
-            self._lock.release()
-        else:
+        if not isinstance(position, State) or not self._valid_pose(position):
             self.print("invalid position format", self.LogLevel.error)
             raise CrazyFlieError("invalid position format")
+        with self._lock:
+            self._next_position = position
         return
 
     def land(self, position:State=None):
@@ -921,14 +931,12 @@ class CrazyFlie(BaseClass):
         """
         # land the drone
         if isinstance(position, State):
-            self._lock.acquire()
-            self._landing_position = position
-            self._lock.release()
+            with self._lock:
+                self._landing_position = position
         else:
             self.print("landing to the current position", self.LogLevel.warning)
-        self._lock.acquire()
-        self._next_position.grounded = True
-        self._lock.release()
+        with self._lock:
+            self._next_position.grounded = True
         return
     
     def motors_off(self):
@@ -944,12 +952,16 @@ class CrazyFlie(BaseClass):
         """
         # stop the motors. did not work, deeper insight required
         
-        self._lock.acquire()
-        self._scf.cf.param.set_value("stabilizer.stop", "1")
-        
-        self._lock.release()
-
-        return
+        with self._lock:
+            try:
+                self._scf.cf.param.set_value("stabilizer.stop", "1")
+            except Exception:
+                pass
+            try:
+                self._scf.cf.commander.send_stop_setpoint()
+                self._scf.cf.commander.send_notify_setpoint_stop()
+            except Exception:
+                pass
     
     """ ---------------------------------------------------------------------------- """
     
@@ -1253,7 +1265,7 @@ def worker(flag:Flag, counter:Counter, lock:ProcessLock, thread_lock:Lock, posit
     sleep(3)
     parameters = drone.read_parameters()
     for name, value in parameters.items():
-        drone.print(f"Drone {drone._name}: {name} = {value}", level=LogLevel.debug)# save position
+        drone.print(f"Drone {drone._name}: {name} = {value}", level=drone.LogLevel.debug)# save position
     
     drone.print(f"Drone {drone._name} measuring initial position", drone.LogLevel.info)
     lock.acquire()
