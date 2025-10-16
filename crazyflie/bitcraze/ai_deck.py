@@ -1,13 +1,25 @@
 """
-    receive and save images coming from a Bitcraze AI Deck
-    
-    connect one AI Deck to the same network as the host
-    received images are saved in ./datasets indexed with the index of the connected deck and the image
-    new receptions overwrite old images to save disk space
+    Receive and store images from a Bitcraze AI Deck.
 
-    Veres-Vitalyos Almos (veresvalmos@gmail.com)
-    2024.03.26
+    The script connects to a single AI Deck that shares the same Wi-Fi network as the host.
+    Received images are saved under ./datasets, indexed by the deck’s MAC address and the image number.
+    To conserve disk space, each new image overwrites the previous one.
+
+    Workflow:
+        1. Connect to or configure the specified Wi-Fi network.
+        2. Discover connected AI Deck devices by scanning MAC and IP pairs.
+        3. Establish a TCP socket connection to the AI Deck.
+        4. Continuously receive image data from the deck.
+        5. Optionally display and/or save the received images.
+
+    Authors:
+        Veres-Vitalyos Almos (veresvalmos@gmail.com)
+        Daniel Bugelnig (daniel.bugelnig@aau.at)
+
+    Date:
+        2025
 """
+
 
 import struct, socket, numpy, cv2, time, threading
 from multiprocessing.synchronize import Lock as ProcessLock   # hint lock type
@@ -27,15 +39,23 @@ class AIDeckError(Exception):
         return
     
 class _ImageType:
+    """Internal helper class for storing image data and usage flags."""
     def __init__(self):
         self.data:NDArray[numpy.uint8] = None
         self.used = False
         return
 
 class AI_Deck(BaseClass):
+    """Interface class for connecting to and receiving images from a Bitcraze AI Deck."""
     # base class to control a Bitcraze AI deck
 
     def __init__(self, ip="", mac=""):
+        """Initialize the AI Deck controller.
+
+        Args:
+            ip (str): IP address of the AI Deck.
+            mac (str): MAC address of the AI Deck.
+        """
         # initialize variables
         super().__init__()
         # identifiers
@@ -57,10 +77,23 @@ class AI_Deck(BaseClass):
     
     def logging(self, enable, file, level, directory:str=None):
         # set up logging
+        """Configure logging for the AI Deck instance.
+
+        Args:
+            enable (bool): Enable or disable logging.
+            file (bool): Enable or disable log file output.
+            level (LogLevel): Logging verbosity level.
+            directory (str, optional): Directory for storing logs.
+        """
         super().logging(enable=enable, file=file, level=level, name="AI_Deck_" + self._mac, directory=directory)
         return
     
     def scan(self):
+        """Scan for available AI Decks on the network.
+
+        Raises:
+            AIDeckError: If no AI Deck can be found or connected.
+        """
         # connect to Wi-Fi
         if not self._check_wifi(retries=1):
             self._set_wifi()
@@ -85,6 +118,8 @@ class AI_Deck(BaseClass):
                 self.print("\t" + mac + "\t-\t" + ip, self.LogLevel.debug)
                 if mac in MAC_LOOKUP.values():
                     addresses.append((mac, ip))
+                    self._ip = ip
+                    self._mac = mac
                 else:
                     # MAC address not registered
                     continue
@@ -98,6 +133,11 @@ class AI_Deck(BaseClass):
         return
     
     def connect(self):
+        """Establish a TCP connection with the AI Deck and start image reception.
+
+        Raises:
+            AIDeckError: If connection fails or times out.
+        """
         # connect to the AI deck
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
@@ -113,6 +153,7 @@ class AI_Deck(BaseClass):
         return
     
     def disconnect(self):
+        """Disconnect from the AI Deck and terminate background threads."""
         # close the existing connection
         self.print("disconnecting from client: " + self._mac, self.LogLevel.message)
         if self._state.get_connected():
@@ -129,6 +170,7 @@ class AI_Deck(BaseClass):
     """ ---------------------------------------------------------------------------- """
     
     def set_display(self, display:bool):
+        """Enable or disable OpenCV image display."""
         # display images or not
         self._display = display
         return
@@ -138,11 +180,13 @@ class AI_Deck(BaseClass):
         return self._image_counter
     
     def set_directory(self, directory:str):
+        """Set the output directory for saving images."""
         # set output path
         self._directory = directory
         return
     
     def set_delay(self, delay_s:float):
+        """Set the time delay (in seconds) between image fetches."""
         # set thread delay in seconds
         self._delay = delay_s
         return
@@ -271,7 +315,11 @@ class AI_Deck(BaseClass):
         return
     
     def _receive_bytes(self, length):
-        # get bytes
+        """Receive and decode a full image from the AI Deck.
+
+        Returns:
+            numpy.ndarray | None: Decoded color image or None on failure.
+        """
         data = bytearray()
         try:
             while len(data) < length:
@@ -287,6 +335,11 @@ class AI_Deck(BaseClass):
     
     
     def _get_image(self):
+        """Receive and decode a full image from the AI Deck.
+
+        Returns:
+            numpy.ndarray | None: Decoded color image or None on failure.
+        """
         try:
             # Info-Header (4 Byte)
             info_raw = self._receive_bytes(4)
@@ -336,7 +389,11 @@ class AI_Deck(BaseClass):
             return None
     
     def save_image(self):
-        # save images
+        """Save the latest received image to disk and optionally display it.
+
+        Returns:
+            bool: True if a new image was saved, False otherwise.
+        """
         try:
             # get the last image
             self._thread_lock.acquire()
@@ -370,7 +427,21 @@ class AI_Deck(BaseClass):
     """ ---------------------------------------------------------------------------- """
 
 def worker(flag:Flag, counter:Counter, lock:ProcessLock, delay, ip, mac, directory:str, display=True, log_enable=True, log_file=True, log_level=LogLevel.message):
-    # create an AIDeck instance and record images with it
+    """Worker function that manages AI Deck connection and image recording.
+
+    Args:
+        flag (Flag): Shared flag object for synchronization.
+        counter (Counter): Shared counter for image numbering.
+        lock (ProcessLock): Interprocess lock for thread-safe operations.
+        delay (float): Delay between operations.
+        ip (str): IP address of the AI Deck.
+        mac (str): MAC address of the AI Deck.
+        directory (str): Output directory for saved images.
+        display (bool, optional): Whether to display images. Defaults to True.
+        log_enable (bool, optional): Enable or disable logging. Defaults to True.
+        log_file (bool, optional): Enable log file output. Defaults to True.
+        log_level (LogLevel, optional): Logging verbosity. Defaults to LogLevel.message.
+    """
     deck = AI_Deck(ip, mac)  # initialize object
     deck.logging(log_enable, log_file, log_level, deck.get_path() + sep + "logs" + sep + directory.split(sep)[-1])   # set up logging
     deck.set_display(display)   # display, or hide images
