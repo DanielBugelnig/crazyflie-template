@@ -177,6 +177,7 @@ class BaseClass():
         self._logging_directory = self.get_path()
         self.torch_installed = TORCH_INSTALLED
         self._state = Flag()
+        self.keyboard_listener = self.KeyboardListener(self)
         return
 
     def logging(self, enable, file, level, name, directory: str = None):
@@ -321,7 +322,13 @@ class BaseClass():
         sys.stdout.write("\r[" + bar + "] " + str(percentage) + "%\r")
         sys.stdout.flush()
         return
-    
+    def _map(self, low_limit_input, high_limit_input, low_limit_output, high_limit_output, input, inverse_exponential=False):
+        # map an input between some limits to an output between other limits
+        if not inverse_exponential:
+            output = ((input - low_limit_input) / (high_limit_input - low_limit_input)) * (high_limit_output - low_limit_output) + low_limit_output
+        else:
+            output = math.pow(1 / math.e, (input - low_limit_input) / (high_limit_input - low_limit_input)) * (high_limit_output - low_limit_output) + low_limit_output
+        return output
     
     """ ---------------------------------------------------------------------------- """
     
@@ -466,4 +473,63 @@ class BaseClass():
 
     
         
+    """ ---------------------------------------------------------------------------- """
+    class KeyboardListener():
+
+        def __init__(self, parent):
+            self._running = True
+            self._parent = parent
+            self.alt_pressed = False
+            self.ctrl_pressed = False
+            self.control_mode = False
+            
+
+            
+        def _on_press(self,key):
+            if key == keyboard.Key.ctrl:
+                self.ctrl_pressed = True
+            elif key == keyboard.Key.alt:
+                self.alt_pressed = True
+            try:
+                print(f'Key {key.char} pressed')
+            except AttributeError:
+                print(f'Special key {key} pressed')
+            self._enabling_control_mode()
+            return
+           
+
+        def _on_release(self,key):
+            if key == keyboard.Key.ctrl:
+                self.ctrl_pressed = False
+            elif key == keyboard.Key.alt:
+                self.alt_pressed = False
+            self._disabling_control_mode()
+            
+            print(f'Key {key} released')
+            if key == keyboard.Key.esc:
+                self.listener.stop()
+                self._running = False
+                return False  # Stop listener
         
+        def _enabling_control_mode(self):
+             # Beide gedrückt → Control Mode aktivieren
+            if self.ctrl_pressed and self.alt_pressed and not self.control_mode:
+                self.control_mode = True
+                print("ControlMode active")
+            return
+        
+        def _disabling_control_mode(self):
+            if self.control_mode and (not self.ctrl_pressed or not self.alt_pressed):
+                self.control_mode = False
+                print("ControlMode off")
+            return
+
+        def start(self):
+            self.listener = keyboard.Listener(on_press=self._on_press, on_release=self._on_release)
+            #print("Starting keylistener")
+            self.listener.start()
+            return
+        
+        def stop(self):
+            self.listener.stop()
+            return

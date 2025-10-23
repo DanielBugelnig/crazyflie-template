@@ -136,9 +136,9 @@ class CrazyFlie(BaseClass):
         self._position_counter = 0
         self._directory = self.get_path()
         # keyboard events
-        # self.keyboard_listener._on_press = self._keyboard_on_press
-        # self.keyboard_listener._on_release = self._keyboard_on_release
-        # self.keyboard_listener.start()
+        self.keyboard_listener._on_press = self._on_press
+        self.keyboard_listener._on_release = self._on_release
+        self.keyboard_listener.start()
         
     
     def logging(self, enable, file, level, directory:str=None):
@@ -1171,27 +1171,45 @@ class CrazyFlie(BaseClass):
                 raise KeyboardInterrupt
         return
     
-    # handle keyboard interrupts, callback functions for the keyboard listener
-    def _keyboard_on_press(self, key): 
-        self.keyboard_listener._enabling_control_mode(key)
-        if (self.keyboard_listener._control_state):
-            print("Control mode active")
+    
+    def _on_press(self,key):
+        if key == keyboard.Key.ctrl:
+            self.keyboard_listener.ctrl_pressed = True
+        elif key == keyboard.Key.alt:
+            self.keyboard_listener.alt_pressed = True
+        try:
+            #print(f'Key {key.char} pressed')
+            pass
+        except AttributeError:
+            #print(f'Special key {key} pressed')
+            pass
+        self.keyboard_listener._enabling_control_mode()
+        if (self.keyboard_listener.control_mode):
             try:
                 if key.char == 'q':
                     self.print("Emergency stop via Keyboard 'q'", self.LogLevel.warning)
                     self.motors_off()
+                if key.char == 'l':
+                    self.print("Landing via Keyboard 'l'", self.LogLevel.warning)
+                    self.land()
             except AttributeError:
                 pass
-            
+            return
+           
+
+    def _on_release(self,key):
+        if key == keyboard.Key.ctrl:
+            self.keyboard_listener.ctrl_pressed = False
+        elif key == keyboard.Key.alt:
+            self.keyboard_listener.alt_pressed = False
+        self.keyboard_listener._disabling_control_mode()
         
-    def _keyboard_on_release(self, key):
-        self.keyboard_listener._disabling_control_mode(key)
+        #print(f'Key {key} released')
         if key == keyboard.Key.esc:
-            self.print("Stopping listener", self.LogLevel.debug)
             self.keyboard_listener.listener.stop()
             self.keyboard_listener._running = False
             return False  # Stop listener
-    
+
 
 
 
