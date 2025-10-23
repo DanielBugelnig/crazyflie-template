@@ -665,6 +665,34 @@ class CrazyFlie(BaseClass):
             self._flight_thread.start()
             self._flying = True
         return
+    
+    def checking_decks(self):
+        """
+        Check and print all detected decks attached to the Crazyflie.
+
+        This method iterates through the parameter table of the connected Crazyflie
+        and checks for all groups starting with 'deck'. Each deck parameter indicates
+        whether a specific deck (e.g., Flow Deck, Loco Deck, AI-deck) is detected
+        or not. A value of 1 means the deck is detected, while 0 means it is not.
+
+        The method prints the results both via the internal logger and to the console.
+
+        Example:
+            deck.bcFlow2 = 1
+            deck.bcLoco = 0
+            deck.bcAiDeck = 1
+
+        Returns:
+            None
+        """
+        # Decks are detected and stored in the parameter table under 'deck'
+        for group in self._scf.cf.param.toc.toc.keys():
+            if group.startswith('deck'):
+                for param in self._scf.cf.param.toc.toc[group]:
+                    val = self._scf.cf.param.get_value(f'{group}.{param}')
+                    self.print(f'Detected deck: {group}, parameter: {param}, value: {val}', self.LogLevel.info)
+                    print(f'{group}.{param} = {val}')
+
     def read_parameters(self, read_all=False):
         """Read a small set of useful Crazyflie parameters.
         Args:
