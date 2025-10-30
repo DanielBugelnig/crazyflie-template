@@ -1,8 +1,8 @@
 """
     collect the control scripts for Crazyflie, and different decks
 
-    Veres-Vitalyos Almos (veresvalmos@gmail.com)
-    2023.11.08
+    Daniel Bugelnig (daniel.bugelnig@aau.at),
+    2025.10.10
 """
 
 from .crazyflie import CrazyFlieError

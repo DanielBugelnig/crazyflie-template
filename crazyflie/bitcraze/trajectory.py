@@ -5,14 +5,15 @@
     Z increases up
 
     Veres-Vitalyos Almos (veresvalmos@gmail.com)
-    2023.11.23
+    Daniel Bugelnig (daniel.bugelnig@aau.at)
+    2025
 """
 
 from math import sin, cos, pi, ceil, floor
 
 from ..core.base_utils import BaseClass
 from ..core.shared_data import State
-from ..constants import LOCO_POSITIONING_ANCHORS
+from ..constants import FLYING_AREA
 from ..core.base_utils import LogLevel
 
 OBJECT_POSITION = State(x=0, y=0, z=0)  # object position in meters
@@ -49,28 +50,40 @@ class Trajectory(BaseClass):
     """ ---------------------------------------------------------------------------- """
 
     def set_count(self, value):
-        # set the number of drones
+        """Sets the number of drones in the swarm.
+
+        Args:
+            value (int): Number of drones.
+        """
         self._count = value
         return
 
     """ ---------------------------------------------------------------------------- """
 
     def get_count(self):
-        # get the number of drones
+        """Returns the number of drones in the swarm.
+
+        Returns:
+            int: The number of drones.
+        """
         return self._count
     
     
     def _get_object_position(self):
-        # set the object position
+        """Initializes the object position and height."""
         self._object_placement = OBJECT_POSITION
         self._object_height = OBJECT_HEIGHT
         self.print("object " + str(self._object_placement), self.LogLevel.info)
         return
     
     def _get_anchor_positions(self):
-        # get the anchor coordinates to know the bounding box, asssuming anchor 0 is the origin (back left) viewed into negative x direction
-        # anchors 0,1,2,3 are on the bottom, 4,5,6,7 are on the top
-        self._anchors = LOCO_POSITIONING_ANCHORS
+        """Retrieves the anchor positions and defines the flight bounding box.
+
+        Assumes that:
+            - Anchor 0 is the back-left corner (viewed facing -X direction).
+            - Anchors 0–3 are bottom anchors, 4–7 are top anchors.
+        """
+        self._anchors = FLYING_AREA
         self._bounds["up"] = min(self._anchors[4].z, self._anchors[5].z, self._anchors[6].z, self._anchors[7].z)
         self._bounds["down"] = 0
         self._bounds["bl"] = self._anchors[0]
@@ -81,6 +94,18 @@ class Trajectory(BaseClass):
         return
     
     def _keep_in_box(self, input:State) -> State:
+        """Keeps a given position within the predefined bounding box.
+
+        Args:
+            input (State): Position to be verified.
+
+        Returns:
+            State: Corrected position within the bounding box.
+
+        Raises:
+            TypeError: If input is not a State object.
+            TrajectoryError: If anchor positions are not properly set.
+        """
         # keep coordinates in the bounding box, anchors should be place in a rectangle, if not space will get lost (smallest rectangle is chosen as flying space)
         output = input.copy()
         if not isinstance(input, State):
@@ -116,7 +141,17 @@ class Trajectory(BaseClass):
     """ ---------------------------------------------------------------------------- """
 
     def verify_position(self, input:list[State]) -> list[State]:
-        # check the position against the boundaries
+        """Checks and corrects a list of positions against bounding box limits.
+
+        Args:
+            input (list[State]): List of positions to verify.
+
+        Returns:
+            list[State]: Corrected list of positions.
+
+        Raises:
+            TrajectoryError: If anchor positions are not initialized.
+        """
         output = [state.copy() for state in input]
 
         for index in range(len(input)):
@@ -128,6 +163,16 @@ class Trajectory(BaseClass):
         return output
     
     def transform_positions(self, positions:list[list[State]]) -> list[list[State]]:
+        """Transforms drone trajectory data from per-drone format to synchronized steps.
+
+        Converts the list from [drone][position] to [position][drone] format.
+
+        Args:
+            positions (list[list[State]]): Positions of each drone.
+
+        Returns:
+            list[list[State]]: Transformed structure for synchronized processing.
+        """
         # transform the positions from zylinder to circle
         transformed = []
         #print(f"length of positions: {len(positions)}, length of first position: {len(positions[0])}")
@@ -140,7 +185,14 @@ class Trajectory(BaseClass):
         return transformed
     
     def verify(self, coordinates:list[list[State]]) -> list[list[State]]:
-        # verify the coordinates
+        """Verifies all coordinates for all drones.
+
+        Args:
+            coordinates (list[list[State]]): List of trajectories per drone.
+
+        Returns:
+            list[list[State]]: Verified trajectories.
+        """
         verified_coordinates = []
         for coordinate in coordinates:
             verified_coordinates.append(self.verify_position(coordinate))
@@ -149,6 +201,16 @@ class Trajectory(BaseClass):
     
     
     def circle(self, radius:float, positions:int, altitude:float) -> list[list[State]]:
+        """Generates circular trajectories around the object for multiple drones.
+
+        Args:
+            radius (float): Radius of the circle around the object.
+            positions (int): Number of discrete points per circle.
+            altitude (float): Altitude at which to fly.
+
+        Returns:
+            list[list[State]]: 3D trajectory positions for each drone.
+        """
         # calculate the coordinates for circling around an object with all the drones in the swarm
         # calculate every position for 1 drone
         first_drone = []

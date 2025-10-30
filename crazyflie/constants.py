@@ -22,6 +22,8 @@ WIFI_PASSWORD = "bitcraze"
 """        OTHER CONSTANTS (hardcoded constants, shoudn't be changed from one run to another)        """
 # List all crazyflies here with their URIs
 CRAZYFLIES = [
+    "radio://0/90/2M/E7E7E7E701", # Daniels Crazyflie 2.1+
+    "radio://0/100/2M/E7E7E7E702",
     "radio://0/100/2M/E7E7E7E701",
     "radio://0/80/2M/E7E7E7E702",
     "radio://0/100/2M/E7E7E7E703",
@@ -32,6 +34,7 @@ CRAZYFLIES = [
     "radio://0/95/2M/E7E7E7E708",
     "radio://0/100/2M/E7E7E7E709",
     "radio://0/100/2M/E7E7E7E710",
+    "radio://0/100/2M/E7E7E7E715", # 20 in 0x
 ]
 
 # Lookup table for AI deck MAC addresses and drone addresses
@@ -59,8 +62,7 @@ MAC_LOOKUP = {
 MESHROOM_ROOT = "/home/danielbugelnig/applications/Meshroom-2023.3.0"   
 ALICE_VISION_ROOT = "/home/danielbugelnig/applications/Meshroom-2023.3.0/aliceVision"
 
-
-LOCO_POSITIONING_ANCHORS = [State(x=0,     y=0,     z=0.18),    # A0
+FLYING_AREA =               [State(x=0,     y=0,     z=0.18),    # A0
                             State(x=3,     y=0.3,  z=0.18),    # A1
                             State(x=3.09,  y=2.5,  z=0.18),    # A2
                             State(x=0.0,  y=2.5, z=0.18),    # A3
