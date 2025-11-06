@@ -40,7 +40,7 @@ from copy import deepcopy
 import cflib.crtp   # connection through radio link
 from cflib.crazyflie import Crazyflie   # communicate with the drone
 from cflib.crazyflie.syncCrazyflie import SyncCrazyflie # synchronous behaviour
-from time import sleep  # delays
+from time import sleep, time  # delays
 from cflib.crazyflie.log import LogConfig   # logging from the drone
 from cflib.crazyflie.syncLogger import SyncLogger   # synchronous logging
 from threading import Thread, Lock    # flight commander running in different thread
@@ -48,10 +48,11 @@ from multiprocessing.synchronize import Lock as ProcessLock   # hint lock type
 from os import sep  # file paths
 from pynput import keyboard    # keyboard listener
 
-from ..constants import MAC_LOOKUP, LOW_BATTERY, RATED_CURRENT, ARRIVAL_THRESHOLD_DISTANCE, ARRIVAL_THRESHOLD_ANGLE, ARRIVAL_THRESHOLD_DISTANCE_ROUGH, ARRIVAL_THRESHOLD_ANGLE_ROUGH
-from ..constants import CRAZYFLIES
-from ..core.base_utils import BaseClass, LogLevel
-from ..core.shared_data import State, Counter, Flag
+from crazyflie.constants import MAC_LOOKUP, LOW_BATTERY, RATED_CURRENT, ARRIVAL_THRESHOLD_DISTANCE, ARRIVAL_THRESHOLD_ANGLE, ARRIVAL_THRESHOLD_DISTANCE_ROUGH, ARRIVAL_THRESHOLD_ANGLE_ROUGH
+from crazyflie.constants import CRAZYFLIES, RIGID_BODY_ID, TIMEOUT, MOCAP_FRESH_MS, MOCAP_SETTLE_S, MOCAP_TX_RATE_HZ
+from crazyflie.core.base_utils import BaseClass, LogLevel
+from crazyflie.core.shared_data import State, Counter, Flag
+from crazyflie.bitcraze.optitrack_integration.optitrack import NatNetRigidBodyMonitor
 
 class CrazyFlieError(Exception):
     """Exception raised for Crazyflie-specific errors.
@@ -98,7 +99,7 @@ class CrazyFlie(BaseClass):
         - Position setpoints require a working position estimator (e.g. EKF)
           with external positioning input.
     """
-    
+    _cf_ID = 0
     def __init__(self, address=""):
         """Initialize the CrazyFlie controller object (not connected yet).
 
@@ -114,6 +115,10 @@ class CrazyFlie(BaseClass):
         self._test_mode = False
         self._flying = False
         # objects
+        self._cf_ID = CrazyFlie._cf_ID
+        CrazyFlie._cf_ID += 1
+        self.natnet_monitor:NatNetRigidBodyMonitor = None
+        self.ext_pos_thread:Thread = None
         self._cf:Crazyflie = None
         self._scf:SyncCrazyflie = None
         self._log_config:LogConfig = None
@@ -208,8 +213,9 @@ class CrazyFlie(BaseClass):
         self.print("no drones found, ", self.LogLevel.error)
         raise CrazyFlieError("no drones found, verify address in constant.py")
     
-    def connect(self, start_flying=True):
+    def connect(self, start_flying=True, localization_mode=None):
         """Connect to the Crazyflie and initialize flight/logging.
+        
 
         Steps:
             1) Initialize radio drivers if needed.
@@ -222,8 +228,8 @@ class CrazyFlie(BaseClass):
         Args:
             start_flying: If True and not in test mode, start the commander
                 thread after initialization.
-
-        Raises:
+            localization_mode: Optional string to configure the estimator
+            ("Loco", "Flow", "Optitrack"        Raises:
             CrazyFlieError: On connection failure or lost link.
 
         Returns:
@@ -260,8 +266,10 @@ class CrazyFlie(BaseClass):
             self._mac = "unknown"
         # initialize flying
         if not self._test_mode:
-            self._init_flight()
+            self.print("initializing flight system...", self.LogLevel.info)
+            self._init_flight(localization_mode)
             if start_flying:
+                self.print("starting flight thread...", self.LogLevel.info)
                 self._start_flying()
         return
     
@@ -283,6 +291,12 @@ class CrazyFlie(BaseClass):
             if self._flight_thread.is_alive():
                 self._flight_thread.join()
                 self._flying = False
+        except AttributeError:
+            pass
+        # stop external position streaming
+        try:
+            if self.ext_pos_thread.is_alive():
+                self.ext_pos_thread.join()
         except AttributeError:
             pass
         # stop logging
@@ -354,6 +368,12 @@ class CrazyFlie(BaseClass):
         # set to true to disable blocking after connection until all the parameters are updated
         self._blocking = state
         return
+
+    def set_natnet_monitor(self, monitor:NatNetRigidBodyMonitor):
+        self.natnet_monitor = monitor
+
+    def get_natnet_monitor(self) -> NatNetRigidBodyMonitor:
+        return self.natnet_monitor
     
     def test_mode(self, state:bool):
         """Enable/disable test mode.
@@ -595,12 +615,124 @@ class CrazyFlie(BaseClass):
         return
 
     """ ---------------------------------------------------------------------------- """
+    def _set(self,name,val):
+        try: self._cf.param.set_value(name, val)
+        except Exception as e: print(f"[param] {name}={val} failed: {e}")
+        
+    def select_localization_mode(self, specific=None):
+        """
+        Select the localization mode based on attached decks or user preference.
+        This method checks for the presence of Flow and Loco decks and sets the
+        localization mode accordingly.
+        Args:
+            specific: Optional specific localization mode to activate
+                      ("Loco", "Flow", "Optitrack"). If None, automatic mode is used.
+        Returns:
 
-    def _init_flight(self):
+            None
+            
+        """
+        self.positioning_mode = "Optitrack"
+        if specific==None: #automatic mode: take Flow deck if available, else Loco deck
+            if self.checking_decks("bcFlow2") or self.checking_decks("bcFlow"):
+                self.print("Flow Deck detected, activating Flow localization", self.LogLevel.info)
+                self.positioning_mode = "Flow"
+            elif self.checking_decks("bcLoco"):
+                self.print("Loco Deck detected, activating Loco localization", self.LogLevel.info)
+                self.positioning_mode = "Loco"
+            else:
+                self.print("Activating Optitrack localization", self.LogLevel.warning)
+                self.positioning_mode = "Optitrack"
+
+        elif specific=="Loco":
+            if self.checking_decks("bcLoco"):
+                self.print("Loco Deck detected, activating Loco localization", self.LogLevel.info)
+                self.positioning_mode = "Loco"
+            else:
+                self.print("Loco Deck not detected, cannot activate Loco localization, activating Optitrack", self.LogLevel.error)
+                self.positioning_mode = "Optitrack"
+        elif specific=="Flow":
+            if self.checking_decks("bcFlow2") or self.checking_decks("bcFlow"):
+                self.print("Flow Deck detected, activating Flow localization", self.LogLevel.info)
+                self.positioning_mode = "Flow"
+            else:
+                self.print("Flow Deck not detected, cannot activate Flow localization, activating Optitrack", self.LogLevel.error)
+                self.positioning_mode = "Optitrack"
+        elif specific=="Optitrack":
+            self.print("Activating Optitrack localization", self.LogLevel.info)
+            self.positioning_mode = "Optitrack"
+        else:
+            self.print("Unknown localization mode specified, activating Optitrack localization", self.LogLevel.error)
+            self.positioning_mode = "Optitrack"
+        return
+    
+
+    def _activate_localization(self):
+        if self.positioning_mode=="Optitrack":
+            self.rigid_body_id = RIGID_BODY_ID[self._cf_ID]
+            if self.natnet_monitor is None:
+                self.print(f"NatNet monitor must be initialized. Cannot activate Optitrack localization for drone {self._name}", self.LogLevel.warning)
+                return -1
+            if self.natnet_monitor.is_running() == False:
+                try: 
+                    self.print(f"Activating NatNet monitor for Optitrack localization{self._name}", self.LogLevel.info)
+                    self.natnet_monitor.start()
+                except Exception as e:
+                    self.print(f"Failed to start NatNet monitor for Optitrack localization for drone {self._name}: {str(e)}", self.LogLevel.error)
+                    return -1
+            self.seed_ekf_with_absolute()
+            sleep(MOCAP_SETTLE_S)  # wait for mocap to stabilize
+            # start external position streaming thread
+            self.ext_pos_thread = Thread(target=self.ext_pos_streaming_loop, daemon=True)
+            self.ext_pos_thread.start()
+            self.print(f"Optitrack localization activated for drone {self._name}", self.LogLevel.info)
+        return 0
+            
+    def seed_ekf_with_absolute(self):
+        t0 = time()
+        abs_cf = None
+        while time() - t0 < TIMEOUT:
+            pos_m, _, age_ms = self.natnet_monitor.get_latest(self.rigid_body_id)
+            if pos_m is not None and age_ms < MOCAP_FRESH_MS:
+                abs_cf = self.natnet_monitor.motive_to_cf_pos(pos_m)  # absolute CF-Koordinaten
+                break
+            sleep(0.02)
+
+        if abs_cf is None:
+            abs_cf = (0.0, 0.0, 0.0)  # Fallback (not ideal)
+        # EKF auf absolute Welt setzen
+        self._set("stabilizer.estimator", 2)   # EKF
+        self._set("kalman.initialX", abs_cf[0])
+        self._set("kalman.initialY", abs_cf[1])
+        self._set("kalman.initialZ", abs_cf[2])
+        self._set("kalman.resetEstimation", 1)
+        sleep(0.1)
+        self._set("kalman.resetEstimation", 0)
+
+        # increase external position trust
+        self._set("locSrv.extPosStdDev", 0.002)  # ~2 mm, needs to be adjusted to quality of mocap
+        print(f"[EKF] Seeded to absolute world at {abs_cf}")
+
+    def ext_pos_streaming_loop(self):
+        """ Continuously stream external position data to the Crazyflie EKF.
+        This method should be run in a separate thread.
+        """
+        while not self._state.get_exit():
+            pos_m, _, age_ms = self.natnet_monitor.get_latest(self.rigid_body_id)
+            if pos_m is not None and age_ms < MOCAP_FRESH_MS:
+                x_cf, y_cf, z_cf = self.natnet_monitor.motive_to_cf_pos(pos_m)  # absolute CF-Koordinaten
+                # Stream external position to Crazyflie
+                with self._lock:
+                    self._cf.extpos.send_extpos(x_cf, y_cf, z_cf)
+            sleep(1.0/MOCAP_TX_RATE_HZ) 
+            
+    def _init_flight(self, localization_mode=None):
         """Initialize flight stack (controller/estimator) and get start pose.
 
         Actions:
             - Set estimator/controller (EKF + PID by default).
+            - Set localization mode (Flow, Loco, Optitrack).
+            - activate localization stream for optitrack if needed
             - Reset the Kalman filter and wait for variance stabilization.
             - Average a few samples to obtain an initial pose.
             - Prepare the commander thread but do not start it.
@@ -618,6 +750,10 @@ class CrazyFlie(BaseClass):
         self._scf.cf.param.set_value("stabilizer.estimator", 2) # 0-auto, 1-complementary, 2-ekf, 3-ukf
         self._scf.cf.param.set_value("stabilizer.controller", 1)    # 0-auto, 1-PID, 2-Mellinger, 3-INDI, 4-Brescianini, 5-OOT
         # Mellinger for maneuvers, INDI against windup, Berscianini against disturbances
+        # set localization mode
+        self.print("selecting localization mode...", self.LogLevel.info)
+        self.select_localization_mode(localization_mode)
+        self._activate_localization()
         # reset the position estimator
         self._scf.cf.param.set_value("kalman.resetEstimation", "1")
         sleep(0.1)
@@ -666,7 +802,7 @@ class CrazyFlie(BaseClass):
             self._flying = True
         return
     
-    def checking_decks(self):
+    def checking_decks(self, specific=None):
         """
         Check and print all detected decks attached to the Crazyflie.
 
@@ -677,6 +813,8 @@ class CrazyFlie(BaseClass):
 
         The method prints the results both via the internal logger and to the console.
 
+        Args:
+            specific: Optional specific deck to check (ex. specific = bcFlow2)
         Example:
             deck.bcFlow2 = 1
             deck.bcLoco = 0
@@ -686,12 +824,25 @@ class CrazyFlie(BaseClass):
             None
         """
         # Decks are detected and stored in the parameter table under 'deck'
-        for group in self._scf.cf.param.toc.toc.keys():
-            if group.startswith('deck'):
-                for param in self._scf.cf.param.toc.toc[group]:
-                    val = self._scf.cf.param.get_value(f'{group}.{param}')
-                    self.print(f'Detected deck: {group}, parameter: {param}, value: {val}', self.LogLevel.info)
-                    print(f'{group}.{param} = {val}')
+        if specific==None:
+            for group in self._scf.cf.param.toc.toc.keys():
+                if group.startswith('deck'):
+                    for param in self._scf.cf.param.toc.toc[group]:
+                        val = self._scf.cf.param.get_value(f'{group}.{param}')
+                        self.print(f'Detected deck: {group}, parameter: {param}, value: {val}', self.LogLevel.info)
+                        print(f'{group}.{param} = {val}')
+                        return
+        else:
+            group = 'deck'
+            try:
+                val = self._scf.cf.param.get_value(f'{group}.{specific}')
+            except ValueError:
+                self.print(f'Deck parameter {specific} not found in group {group}', self.LogLevel.error)
+                print(f'{group}.{specific} not found')
+                return -1
+            self.print(f'Deck {specific}, value: {val}', self.LogLevel.info)
+            print(f'{group}.{specific} = {val}')
+            return val
 
     def read_parameters(self, read_all=False):
         """Read a small set of useful Crazyflie parameters.

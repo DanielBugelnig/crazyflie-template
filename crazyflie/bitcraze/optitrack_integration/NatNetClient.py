@@ -26,8 +26,7 @@ import struct
 from threading import Thread
 import copy
 import time
-import DataDescriptions
-import MoCapData
+from . import DataDescriptions, MoCapData
 
 
 def trace(*args):
@@ -71,7 +70,8 @@ class NatNetClient:
     # print_level = 0 off
     # print_level = 1 on
     # print_level = >1 on / print every nth mocap frame
-    print_level = 20
+    print_level = 0
+    print_frame_number = False
 
     def __init__(self):
         # Change this value to the IP address of the NatNet server.
@@ -2079,7 +2079,8 @@ class NatNetClient:
 
             offset_tmp, mocap_data = self.__unpack_mocap_data(data[offset:], packet_size, major, minor) #type: ignore  # noqa E501
             offset += offset_tmp
-            print("MoCap Frame: %d\n" % (mocap_data.prefix_data.frame_number))
+            if self.print_frame_number:
+                print("MoCap Frame: %d\n" % (mocap_data.prefix_data.frame_number))
             # get a string version of the data for output
             if print_level >= 1:
                 mocap_data_str = mocap_data.get_as_string()

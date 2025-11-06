@@ -22,7 +22,8 @@ WIFI_PASSWORD = "bitcraze"
 """        OTHER CONSTANTS (hardcoded constants, shoudn't be changed from one run to another)        """
 # List all crazyflies here with their URIs
 CRAZYFLIES = [
-    "radio://0/90/2M/E7E7E7E701", # Daniels Crazyflie 2.1+
+    "radio://0/90/2M/E7E7E7E701", # Daniels Crazyflie 2.1+ Number12
+    "radio://0/90/2M/E7E7E7E702", # Daniels Crazyflie 2.1 Number13
     "radio://0/100/2M/E7E7E7E702",
     "radio://0/100/2M/E7E7E7E701",
     "radio://0/80/2M/E7E7E7E702",
@@ -36,6 +37,8 @@ CRAZYFLIES = [
     "radio://0/100/2M/E7E7E7E710",
     "radio://0/100/2M/E7E7E7E715", # 20 in 0x
 ]
+
+
 
 # Lookup table for AI deck MAC addresses and drone addresses
 MAC = ["-", # placeholder
@@ -56,7 +59,23 @@ MAC_LOOKUP = {
               "radio://0/100/2M/E7E7E7E709": MAC[4],
               "radio://0/100/2M/E7E7E7E710": "78:21:84:7a:4f:71",}   
 
-
+# Positioning system settings
+POSITIONING_SYSTEM = "OptiTrack"  # "OptiTrack"
+# ===== CONFIG Optitrack =====
+CLIENT_IP     = "192.168.1.143"
+SERVER_IP     = "192.168.1.171"
+USE_MULTICAST = False
+# Rigid body IDs
+RIGID_BODY_ID  =[
+    13,
+    12,
+    35
+    ]
+#
+MOCAP_TX_RATE_HZ  = 120       # Hz for extpos streaming
+MOCAP_FRESH_MS    = 150       # mocap sample considered fresh if younger than this
+MOCAP_SETTLE_S    = 1.0       # seconds of stable mocap before EKF reset
+TIMEOUT = 5
 
 # Meshroom path (used for 3D reconstruction on the host computer)
 MESHROOM_ROOT = "/home/danielbugelnig/applications/Meshroom-2023.3.0"   
