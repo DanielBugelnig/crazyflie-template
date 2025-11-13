@@ -2,17 +2,18 @@
     scan for and control multiple Bitcraze Crazyflie 2.1 drones and AI decks
     
     scans the available USB devices for a dongle, then uses the dongle to scan for CrazyFlies
-    scans the available networks for connected AI decks
+     (optional) scans the available networks for connected AI decks
     control is done via the worker functions in the respective fles
 
     Veres-Vitalyos Almos (veresvalmos@gmail.com)
     Daniel Bugelnig (daniel.bugelnig@edu.aau.at)
-    2024.03.26
+    2025.11.05
 """
 
 import cflib.crtp   # communication over radio
 from multiprocessing import Process # parallel execution
 from multiprocessing.synchronize import Lock    # hint lock type
+from multiprocessing import Process, Lock as ProcessLock
 import socket   # communication over Wi-Fi
 from threading import Thread    # multithreading
 from threading import Lock as ThreadLock    # synchronizing
@@ -78,7 +79,8 @@ class _SwarmMember:
         self.cf_process:Thread = None
         self.ai_process:Process = None
         self.value_manager = StateManager()
-        self.lock:Lock = self.value_manager.Lock()
+        #self.lock:Lock = self.value_manager.Lock()
+        self.lock = ProcessLock()
         # shared values
         self.image_counter:Counter = self.value_manager.Counter()
         self.position_counter:Counter = self.value_manager.Counter()
@@ -105,6 +107,7 @@ class CrazySwarm(BaseClass):
         self._output_directory = self.get_path()
         self._count = 0
         self._radio_lock = ThreadLock()
+        self._enable_aideck = False
         return
     
     def logging(self, enable, file, level):
@@ -147,7 +150,8 @@ class CrazySwarm(BaseClass):
         """
         try:
             radios = self._scan_cf()
-            clients = self._scan_ai()
+            if self._enable_aideck:
+                clients = self._scan_ai()
         except SwarmError as message:
             raise SwarmError(message)
         # create swarm member objects
@@ -158,18 +162,28 @@ class CrazySwarm(BaseClass):
                 member.name = member.address[-10:]
             except IndexError:
                 member.name = "unknown"
-            for client in clients:
-                mac = client[0]
-                ip = client[1]
-                if mac == MAC_LOOKUP[member.address]:
-                    member.mac = mac
-                    member.ip = ip
-                    break
+            if self._enable_aideck:
+                for client in clients:
+                    mac = client[0]
+                    ip = client[1]
+                    if mac == MAC_LOOKUP[member.address]:
+                        member.mac = mac
+                        member.ip = ip
+                        break
             self._members.append(member)
             self._count = self._count + 1
         return radios
-    
-    def set_delay(self, delay_s_drone:float, delay_s_deck:float):
+    def set_natnet_monitor(self, monitor):
+        """Set the NatNet monitor for Optitrack localization.
+
+        Args:
+            monitor (NatNetRigidBodyMonitor): Instance of the NatNet monitor.
+        Returns:
+            None
+        """
+        self.natnet_monitor = monitor
+        return
+    def set_delay(self, delay_s_drone:float, delay_s_deck:float=0.5):
         """Set the loop sleep delays for drone and AI deck workers.
 
         Args:
@@ -182,6 +196,21 @@ class CrazySwarm(BaseClass):
         for member in self._members:
             member.drone_delay = delay_s_drone
             member.ai_delay = delay_s_deck
+        return
+    
+    def enable_aideck(self, enable:bool=True):
+        """Enable or disable AI deck support in the swarm.
+
+        When enabled, the swarm scan will look for AI decks and pair them
+        with Crazyflies based on known MAC addresses.
+
+        Args:
+            enable (bool): If True, enable AI deck support; if False, disable it.
+
+        Returns:
+            None
+        """
+        self._enable_aideck = enable
         return
     
     def start(self):
@@ -214,26 +243,31 @@ class CrazySwarm(BaseClass):
                          "average_count": POSITION_AVERAGE,     # measurements to average when measuring position
                          "log_enable": self._logging,           # enable/disable logging
                          "log_file": self._logging_file,        # log to file/console
-                         "log_level": self._logging_level}      # log severity level
-            ai_params = {"flag": member.flag,                   # shared value (state) to store the current state of each process
-                         "counter": member.image_counter,       # shared value (int) to count saved images
-                         "lock": member.lock,                   # lock object from multiprocessing module for the member's processes
-                         "delay": member.ai_delay,              # wait time between operations in seconds
-                         "ip": member.ip,                       # IP address (IPv4)
-                         "mac": member.mac,                     # MAC address
-                         "directory": self._output_directory,   # output directory
-                         "display": DISPLAY_IMAGES,             # show/hide recorded image stream
-                         "log_enable": self._logging,           # enable/disable logging
-                         "log_file": self._logging_file,        # log to file/console
-                         "log_level": self._logging_level}      # log severity level
+                         "log_level": self._logging_level,
+                         "natnet_monitor": self.natnet_monitor}      # log severity level
+
+            if self._enable_aideck:
+                ai_params = {"flag": member.flag,                   # shared value (state) to store the current state of each process
+                            "counter": member.image_counter,       # shared value (int) to count saved images
+                            "lock": member.lock,                   # lock object from multiprocessing module for the member's processes
+                            "delay": member.ai_delay,              # wait time between operations in seconds
+                            "ip": member.ip,                       # IP address (IPv4)
+                            "mac": member.mac,                     # MAC address
+                            "directory": self._output_directory,   # output directory
+                            "display": DISPLAY_IMAGES,             # show/hide recorded image stream
+                            "log_enable": self._logging,           # enable/disable logging
+                            "log_file": self._logging_file,        # log to file/console
+                            "log_level": self._logging_level}      # log severity level
             # set up processes
             member.cf_process = Thread(target=cf_worker, kwargs=cf_params, daemon=False, name="drone_" + member.name)
-            member.ai_process = Process(target=ai_worker, kwargs=ai_params, daemon=False, name="deck_" + member.mac)
+            if self._enable_aideck:
+                member.ai_process = Process(target=ai_worker, kwargs=ai_params, daemon=False, name="deck_" + member.mac)
             # start processes
             member.cf_process.start()
             self.print("drone " + member.name + " started", self.LogLevel.message)
-            member.ai_process.start()
-            self.print("deck " + member.mac + " started", self.LogLevel.message)
+            if self._enable_aideck:
+                member.ai_process.start()
+                self.print("deck " + member.mac + " started", self.LogLevel.message)
         # wait for all drones
         ready = False
         while not ready:
@@ -272,7 +306,7 @@ class CrazySwarm(BaseClass):
         return
     
     def stop(self):
-        """Gracefully stop all worker thread/process pairs in the swarm.
+        """Stop all worker thread/process pairs in the swarm.
 
         Sets the exit flag for each member, then joins the AI deck process
         and the Crazyflie thread to ensure clean shutdown.
@@ -285,8 +319,9 @@ class CrazySwarm(BaseClass):
             # set exit flag
             with member.lock:
                 member.flag.set_exit()
-            member.ai_process.join()
-            self.print("deck " + member.mac + " stopped", self.LogLevel.message)
+            if member.ai_process:
+                member.ai_process.join()
+                self.print("deck " + member.mac + " stopped", self.LogLevel.message)
             member.cf_process.join()
             self.print("drone " + member.name + " stopped", self.LogLevel.message)
         return
@@ -320,7 +355,7 @@ class CrazySwarm(BaseClass):
             raise SwarmError(message)
         return
     
-    def fly(self, positions:list[State], photo:bool=True):
+    def fly(self, positions:list[State], photo:bool=False):
         """Command all drones to fly to target positions (optionally save photo).
 
         Args:
@@ -341,7 +376,47 @@ class CrazySwarm(BaseClass):
         except SwarmError as message:
             raise SwarmError(message)
         return
-    
+    def turn_to_center(self):
+        """Turn all drones to face the center point (0,0).
+        All drones must start with yaw=0 facing positive X axis.
+
+        Raises:
+            SwarmError: If a member access fails.
+        """
+        # turn all drones to face the center point (0,0)
+        try:
+            n = len(self._members)
+            for index in range(n):
+                    yaw = (index * (360.0 / n))
+                    if yaw > 180:
+                        yaw = (-1) * (180 - (yaw - 180))
+                        
+                    self.turn_single(index, yaw)
+        except IndexError:
+            self.print("drone not found", self.LogLevel.error)
+            raise SwarmError("drone not found")
+        return
+
+    def turn_single(self, index, yaw:float):
+        """Turn a single drone to a specified yaw angle.
+
+        Args:
+            index (int): Index of the drone within the swarm.
+            yaw (float): Target yaw angle in degrees.
+
+        Raises:
+            SwarmError: If the drone index is invalid.
+        """
+        # turn a single drone to the required yaw
+        try:
+            with self._members[index].lock:
+                self._members[index].next_position.set_yaw(yaw)
+                self._members[index].flag.set_position_updated_no_save()
+        except IndexError:
+            self.print("drone not found", self.LogLevel.error)
+            raise SwarmError("drone not found")
+        return
+        
     def get_state(self):
         """Get the current measured/estimated state for each drone.
 
@@ -360,7 +435,7 @@ class CrazySwarm(BaseClass):
             raise SwarmError(message)
         return states
     
-    def arrived(self, photo:bool=True):
+    def arrived(self, photo:bool=False):
         """Check if all drones reached their targets (and optionally saved photos).
 
         Args:
