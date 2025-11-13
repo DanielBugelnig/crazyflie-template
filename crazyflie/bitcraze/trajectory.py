@@ -1,9 +1,5 @@
 """
-    calculate trajectories for all available drones
-    X increases towards the front
-    Y increases towards right
-    Z increases up
-
+    calculate trajectories for drones in a swarm
     Veres-Vitalyos Almos (veresvalmos@gmail.com)
     Daniel Bugelnig (daniel.bugelnig@aau.at)
     2025
@@ -16,8 +12,8 @@ from ..core.shared_data import State
 from ..constants import FLYING_AREA
 from ..core.base_utils import LogLevel
 
-OBJECT_POSITION = State(x=0, y=0, z=0)  # object position in meters
-OBJECT_HEIGHT = 0.5  # object height in meters
+OBJECT_POSITION = State(x=0, y=0, z=1)  # object position in meters
+OBJECT_HEIGHT = 1  # object height in meters
 
 import matplotlib.pyplot as plt
 
@@ -173,7 +169,7 @@ class Trajectory(BaseClass):
         Returns:
             list[list[State]]: Transformed structure for synchronized processing.
         """
-        # transform the positions from zylinder to circle
+        # transform the positions from the format created by the functions zylinder to [positions][drones]
         transformed = []
         #print(f"length of positions: {len(positions)}, length of first position: {len(positions[0])}")
         for i in range(len(positions[0])): #number of points per drone
@@ -233,7 +229,7 @@ class Trajectory(BaseClass):
         for index in range(positions):
             all_drones.append([first_drone[index], fourth_drone[index], second_drone[index], third_drone[index]])
             results.append(all_drones[index][:self._count])
-        return results
+        return results # shape: [positions][drones]
     
     def zylinder(self, radius:float, positions:int, object_height:float=OBJECT_HEIGHT, object_position:State=OBJECT_POSITION, number_circles:int=1, vertical:bool=False) -> list[list[State]]:
         """
@@ -291,7 +287,7 @@ class Trajectory(BaseClass):
                         
                         drone_positions[drone].append(State(x,y,z,0,0,yaw))
             
-            return drone_positions
+            return drone_positions # shape: [drone][positions]
         # vertical movement
         else:
             # calculating number of vertical segment, number of layers for each segment and number of positions for each layer of each segment

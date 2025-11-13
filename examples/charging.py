@@ -10,7 +10,7 @@ from crazyflie.bitcraze.ai_deck import AI_Deck
 import crazyflie.bitcraze.swarm as swarm_module
 
 drone = CrazyFlie()   # create object
-drone.logging(enable=True, file=False, level=base.LogLevel.message)  # set up logging
+drone.logging(enable=True, file=False, level=base.LogLevel.info)  # set up logging
 try:
     drone.scan()    # scan for drones
     drone.test_mode(True)   # set test mode
