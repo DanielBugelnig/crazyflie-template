@@ -24,18 +24,18 @@ WIFI_PASSWORD = "bitcraze"
 CRAZYFLIES = [
     "radio://0/90/2M/E7E7E7E701", # Daniels Crazyflie 2.1+ Number12
     "radio://0/90/2M/E7E7E7E702", # Daniels Crazyflie 2.1 Number13
-    "radio://0/100/2M/E7E7E7E702",
-    "radio://0/100/2M/E7E7E7E701",
-    "radio://0/80/2M/E7E7E7E702",
-    "radio://0/100/2M/E7E7E7E703",
-    "radio://0/80/2M/E7E7E7E704",
-    "radio://0/90/2M/E7E7E7E705",
-    "radio://0/90/2M/E7E7E7E706",
-    "radio://0/95/2M/E7E7E7E707",
-    "radio://0/95/2M/E7E7E7E708",
-    "radio://0/100/2M/E7E7E7E709",
-    "radio://0/100/2M/E7E7E7E710",
-    "radio://0/100/2M/E7E7E7E715", # 20 in 0x
+    # "radio://0/100/2M/E7E7E7E702",
+    # "radio://0/100/2M/E7E7E7E701",
+    # "radio://0/80/2M/E7E7E7E702",
+    # "radio://0/100/2M/E7E7E7E703",
+    # "radio://0/100/2M/E7E7E7E704",
+    # "radio://0/90/2M/E7E7E7E705",
+    # "radio://0/90/2M/E7E7E7E706",
+    # "radio://0/95/2M/E7E7E7E707",
+    # "radio://0/95/2M/E7E7E7E708",
+    # "radio://0/100/2M/E7E7E7E709",
+    # "radio://0/100/2M/E7E7E7E710",
+    # "radio://0/100/2M/E7E7E7E715", # 20 in 0x
 ]
 
 
@@ -67,8 +67,8 @@ SERVER_IP     = "192.168.1.171"
 USE_MULTICAST = False
 # Rigid body IDs
 RIGID_BODY_ID  =[
-    13,
     12,
+    13,
     35
     ]
 #
@@ -81,14 +81,14 @@ TIMEOUT = 5
 MESHROOM_ROOT = "/home/danielbugelnig/applications/Meshroom-2023.3.0"   
 ALICE_VISION_ROOT = "/home/danielbugelnig/applications/Meshroom-2023.3.0/aliceVision"
 
-FLYING_AREA =               [State(x=0,     y=0,     z=0.18),    # A0
-                            State(x=3,     y=0.3,  z=0.18),    # A1
-                            State(x=3.09,  y=2.5,  z=0.18),    # A2
-                            State(x=0.0,  y=2.5, z=0.18),    # A3
-                            State(x=0,     y=0,     z=2.03),    # A4
-                            State(x=3,     y=0.3,  z=2.03),    # A5
-                            State(x=3.09,  y=2.5,  z=2.03),    # A6
-                            State(x=0,  y=2.50, z=2.03)]    # A7
+FLYING_AREA =               [State(x=-1.5,     y=-1,     z=0.1),    # A0
+                             State(x=1.5,     y=-1,  z=0.10),    # A1
+                             State(x=1.5,  y=1,  z=0.1),    # A2
+                             State(x=-1.5,  y=1, z=0.1),    # A3
+                             State(x=-1.5,     y=-1,     z=2.0),    # A4
+                             State(x=1.5,     y=-1,  z=2.0),    # A5
+                             State(x=1.5,  y=1,  z=2.0),    # A6
+                             State(x=-1.5,  y=1, z=2.0)]    # A7
 
 
 # port to be used in Wi-Fi communication
