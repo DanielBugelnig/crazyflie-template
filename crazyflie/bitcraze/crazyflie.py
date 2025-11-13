@@ -212,8 +212,8 @@ class CrazyFlie(BaseClass):
         self._state.set_scanned()
         self.print("no drones found, ", self.LogLevel.error)
         raise CrazyFlieError("no drones found, verify address in constant.py")
-    
-    def connect(self, start_flying=True, localization_mode=None):
+
+    def connect(self, start_flying=True, localization_mode="Optitrack"):
         """Connect to the Crazyflie and initialize flight/logging.
         
 
@@ -632,9 +632,11 @@ class CrazyFlie(BaseClass):
             None
             
         """
+        #self.checking_decks()  # update deck information
         self.positioning_mode = "Optitrack"
         if specific==None: #automatic mode: take Flow deck if available, else Loco deck
             if self.checking_decks("bcFlow2") or self.checking_decks("bcFlow"):
+                #self.print(f"Test flow: {self.checking_decks('bcFlow2')}, {self.checking_decks('bcFlow')}", self.LogLevel.debug)
                 self.print("Flow Deck detected, activating Flow localization", self.LogLevel.info)
                 self.positioning_mode = "Flow"
             elif self.checking_decks("bcLoco"):
@@ -672,7 +674,6 @@ class CrazyFlie(BaseClass):
             self.rigid_body_id = RIGID_BODY_ID[self._cf_ID]
             if self.natnet_monitor is None:
                 self.print(f"NatNet monitor must be initialized. Cannot activate Optitrack localization for drone {self._name}", self.LogLevel.warning)
-                return -1
             if self.natnet_monitor.is_running() == False:
                 try: 
                     self.print(f"Activating NatNet monitor for Optitrack localization{self._name}", self.LogLevel.info)
@@ -680,6 +681,8 @@ class CrazyFlie(BaseClass):
                 except Exception as e:
                     self.print(f"Failed to start NatNet monitor for Optitrack localization for drone {self._name}: {str(e)}", self.LogLevel.error)
                     return -1
+            else:
+                print(f"NatNet monitor already running for Optitrack localization for drone {self._name}", self.LogLevel.info)
             self.seed_ekf_with_absolute()
             sleep(MOCAP_SETTLE_S)  # wait for mocap to stabilize
             # start external position streaming thread
@@ -823,26 +826,32 @@ class CrazyFlie(BaseClass):
         Returns:
             None
         """
-        # Decks are detected and stored in the parameter table under 'deck'
-        if specific==None:
+        if specific is None:
+            found = False
             for group in self._scf.cf.param.toc.toc.keys():
                 if group.startswith('deck'):
                     for param in self._scf.cf.param.toc.toc[group]:
                         val = self._scf.cf.param.get_value(f'{group}.{param}')
-                        self.print(f'Detected deck: {group}, parameter: {param}, value: {val}', self.LogLevel.info)
+                        self.print(f'Detected deck: {param} {val}', self.LogLevel.info)
                         print(f'{group}.{param} = {val}')
-                        return
+                        found = True
+            if not found:
+                self.print("No deck parameters found", self.LogLevel.warning)
+            return  # kein spezieller Wert – reine Auflistung
         else:
-            group = 'deck'
             try:
-                val = self._scf.cf.param.get_value(f'{group}.{specific}')
+                val = self._scf.cf.param.get_value(f'deck.{specific}')
             except ValueError:
-                self.print(f'Deck parameter {specific} not found in group {group}', self.LogLevel.error)
-                print(f'{group}.{specific} not found')
-                return -1
+                self.print(f'Deck parameter {specific} not found in group, self.LogLevel.error)')
+                print(f'deck.{specific} not found')
+                return 0
             self.print(f'Deck {specific}, value: {val}', self.LogLevel.info)
-            print(f'{group}.{specific} = {val}')
-            return val
+            #print(f'deck.{specific} = {val}')
+            #print(type(val))
+            if val == 0:
+                
+                return False
+
 
     def read_parameters(self, read_all=False):
         """Read a small set of useful Crazyflie parameters.
@@ -927,10 +936,12 @@ class CrazyFlie(BaseClass):
                         with self._lock:
                             coordinates = deepcopy(self._next_position)
                         angle_diff = self._angle_diff(coordinates.yaw,self._current_state.yaw)
+                        #self.print(f"angle diff: {angle_diff}", self.LogLevel.debug)
                         # check against the maximum allowed rotation
                         if abs(angle_diff) > 45:
+                            #self.print(f"angle diff {angle_diff} too large, limiting to 45 degrees", self.LogLevel.debug)
                             coordinates.yaw = self._current_state.yaw + 45 * (1 if angle_diff > 0 else -1)
-                            self.print(f"error in position measurement, yaw correction: input: {coordinates.yaw}, current pos{self._current_state.yaw}", self.LogLevel.debug)
+                            self.print(f"error in position measurement, new yaw correction: input: {coordinates.yaw}, current pos {self._current_state.yaw}", self.LogLevel.debug)
                         self.print(f"Sending setpoint to {self._name}: [{coordinates.x},{coordinates.y},{coordinates.z},{coordinates.yaw}]", level=LogLevel.debug)
                         self._scf.cf.commander.send_position_setpoint(coordinates.x, coordinates.y, coordinates.z, coordinates.yaw)
                 # delay to let time for other threads
@@ -951,17 +962,12 @@ class CrazyFlie(BaseClass):
         self._scf.cf.commander.send_notify_setpoint_stop()
         return
     
-    def _angle_diff(self, a, b):
-        """Compute the minimal signed angular difference (degrees).
+    def _angle_diff(self, target, current):
+        """Return the minimal signed angular difference (target - current) in degrees.
 
-        Args:
-            a: Angle A in degrees.
-            b: Angle B in degrees.
-
-        Returns:
-            float: Value in (-180, 180], representing (b - a) modulo 360.
+        Range: (-180, 180]
         """
-        diff = (b - a + 180) % 360 - 180
+        diff = (target - current + 180) % 360 - 180
         return diff
     
     def _wait_estimator(self):
@@ -1395,7 +1401,7 @@ class CrazyFlie(BaseClass):
 
 """ ---------------------------------------------------------------------------- """
 
-def worker(flag:Flag, counter:Counter, lock:ProcessLock, thread_lock:Lock, position:State, status:State, delay, address, directory:str, average_count=10, log_enable=True, log_file=True, log_level=LogLevel.message):
+def worker(flag:Flag, counter:Counter, lock:ProcessLock, thread_lock:Lock, position:State, status:State, delay, address, directory:str, average_count=10, log_enable=True, log_file=True, log_level=LogLevel.message, localization_mode=None, natnet_monitor=None):
     """Orchestrate a single Crazyflie in a separate process/thread loop.
 
     The `worker` function encapsulates the full lifecycle for one drone:
@@ -1458,7 +1464,8 @@ def worker(flag:Flag, counter:Counter, lock:ProcessLock, thread_lock:Lock, posit
     drone.set_directory(directory)  # set output path
     drone.set_delay(delay)  # set update delay
     drone.set_radio_lock(thread_lock)   # synchronize radio
-    drone.connect(start_flying=False) # open link
+    drone.set_natnet_monitor(natnet_monitor)  # set NatNet monitor
+    drone.connect(start_flying=False, localization_mode=localization_mode) # open link
     sleep(3)
     parameters = drone.read_parameters()
     for name, value in parameters.items():
