@@ -26,7 +26,7 @@ pip install -r requirements.txt
 ```
 
 ## Usage
-Enter your fixed values (i.e. antenna adresses, flight space boundaries, rigid_body_ids, time constants, mac addresses of AI-deck...) in the crazyflie/constants.py file
+Enter your fixed values (i.e. antenna adresses, flight space boundaries, rigid_body_ids, time constants, mac addresses of AI-deck...) in [crazyflie/constants.py](crazyflie/constants.py).
 
 
 2. Run an example (check battery charge)
