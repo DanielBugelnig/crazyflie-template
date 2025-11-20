@@ -24,7 +24,9 @@ WIFI_PASSWORD = "bitcraze"
 CRAZYFLIES = [
     "radio://0/90/2M/E7E7E7E701", # Daniels Crazyflie 2.1+ Number12
     "radio://0/90/2M/E7E7E7E702", # Daniels Crazyflie 2.1 Number13
-    # "radio://0/100/2M/E7E7E7E702",
+    "radio://0/90/2M/E7E7E7E703", # Bugelnig Crazyflie 2.1 Number14
+    "radio://0/90/2M/E7E7E7E704", # Bugelnig Crazyflie 2.1 Number15
+    "radio://0/100/2M/E7E7E7E704",
     # "radio://0/100/2M/E7E7E7E701",
     # "radio://0/80/2M/E7E7E7E702",
     # "radio://0/100/2M/E7E7E7E703",
@@ -59,19 +61,22 @@ MAC_LOOKUP = {
               "radio://0/100/2M/E7E7E7E709": MAC[4],
               "radio://0/100/2M/E7E7E7E710": "78:21:84:7a:4f:71",}   
 
+RIGID_BODY_ID_LOOKUP = {
+                CRAZYFLIES[0]: 12,
+                CRAZYFLIES[1]: 13,
+                CRAZYFLIES[2]: 14,
+                CRAZYFLIES[3]: 15,
+
+}
+
 # Positioning system settings
 POSITIONING_SYSTEM = "OptiTrack"  # "OptiTrack"
 # ===== CONFIG Optitrack =====
 CLIENT_IP     = "192.168.1.143"
 SERVER_IP     = "192.168.1.171"
 USE_MULTICAST = False
-# Rigid body IDs
-RIGID_BODY_ID  =[
-    12,
-    13,
-    35
-    ]
-#
+
+
 MOCAP_TX_RATE_HZ  = 120       # Hz for extpos streaming
 MOCAP_FRESH_MS    = 150       # mocap sample considered fresh if younger than this
 MOCAP_SETTLE_S    = 1.0       # seconds of stable mocap before EKF reset

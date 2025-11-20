@@ -49,7 +49,7 @@ from os import sep  # file paths
 from pynput import keyboard    # keyboard listener
 
 from crazyflie.constants import MAC_LOOKUP, LOW_BATTERY, RATED_CURRENT, ARRIVAL_THRESHOLD_DISTANCE, ARRIVAL_THRESHOLD_ANGLE, ARRIVAL_THRESHOLD_DISTANCE_ROUGH, ARRIVAL_THRESHOLD_ANGLE_ROUGH
-from crazyflie.constants import CRAZYFLIES, RIGID_BODY_ID, TIMEOUT, MOCAP_FRESH_MS, MOCAP_SETTLE_S, MOCAP_TX_RATE_HZ
+from crazyflie.constants import CRAZYFLIES, TIMEOUT, MOCAP_FRESH_MS, MOCAP_SETTLE_S, MOCAP_TX_RATE_HZ, RIGID_BODY_ID_LOOKUP
 from crazyflie.core.base_utils import BaseClass, LogLevel
 from crazyflie.core.shared_data import State, Counter, Flag
 from crazyflie.bitcraze.optitrack_integration.optitrack import NatNetRigidBodyMonitor
@@ -671,7 +671,7 @@ class CrazyFlie(BaseClass):
 
     def _activate_localization(self):
         if self.positioning_mode=="Optitrack":
-            self.rigid_body_id = RIGID_BODY_ID[self._cf_ID]
+            self.rigid_body_id = RIGID_BODY_ID_LOOKUP[self._address]
             if self.natnet_monitor is None:
                 self.print(f"NatNet monitor must be initialized. Cannot activate Optitrack localization for drone {self._name}", self.LogLevel.warning)
             if self.natnet_monitor.is_running() == False:
