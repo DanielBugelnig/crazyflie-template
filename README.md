@@ -9,6 +9,10 @@ AI-Deck cameras, and OptiTrack/NatNet motion capture integration.
 ```bash
 git clone https://github.com/DanielBugelnig/crazyflie-template.git
 ```
+#### Checkout your branch
+```bash
+git checkout <branch-name>
+```
 
 ### 2. Venv (Python 3.10)
 Make sure Python 3.10 is installed:
