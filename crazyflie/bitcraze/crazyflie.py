@@ -49,7 +49,7 @@ from os import sep  # file paths
 from pynput import keyboard    # keyboard listener
 
 from crazyflie.constants import MAC_LOOKUP, LOW_BATTERY, RATED_CURRENT, ARRIVAL_THRESHOLD_DISTANCE, ARRIVAL_THRESHOLD_ANGLE, ARRIVAL_THRESHOLD_DISTANCE_ROUGH, ARRIVAL_THRESHOLD_ANGLE_ROUGH
-from crazyflie.constants import CRAZYFLIES, TIMEOUT, MOCAP_FRESH_MS, MOCAP_SETTLE_S, MOCAP_TX_RATE_HZ, RIGID_BODY_ID_LOOKUP
+from crazyflie.constants import CRAZYFLIES, TIMEOUT, MOCAP_FRESH_MS, MOCAP_SETTLE_S, MOCAP_TX_RATE_HZ, RIGID_BODY_ID_LOOKUP, CONTROLLER_TYPE
 from crazyflie.core.base_utils import BaseClass, LogLevel
 from crazyflie.core.shared_data import State, Counter, Flag
 from crazyflie.bitcraze.optitrack_integration.optitrack import NatNetRigidBodyMonitor
@@ -751,7 +751,7 @@ class CrazyFlie(BaseClass):
         # set controller and estimator
         self.get_radio()
         self._scf.cf.param.set_value("stabilizer.estimator", 2) # 0-auto, 1-complementary, 2-ekf, 3-ukf
-        self._scf.cf.param.set_value("stabilizer.controller", 1)    # 0-auto, 1-PID, 2-Mellinger, 3-INDI, 4-Brescianini, 5-OOT
+        self._scf.cf.param.set_value("stabilizer.controller", CONTROLLER_TYPE)    # 0-auto, 1-PID, 2-Mellinger, 3-INDI, 4-Brescianini, 5-OOT
         # Mellinger for maneuvers, INDI against windup, Berscianini against disturbances
         # set localization mode
         self.print("selecting localization mode...", self.LogLevel.info)

@@ -82,6 +82,11 @@ MOCAP_FRESH_MS    = 150       # mocap sample considered fresh if younger than th
 MOCAP_SETTLE_S    = 1.0       # seconds of stable mocap before EKF reset
 TIMEOUT = 5
 
+# Controller type
+CONTROLLER_TYPE = 1 # 0-auto, 1-PID, 2-Mellinger, 3-INDI, 4-Brescianini, 5-OOT
+# Mellinger for maneuvers, INDI against windup, Berscianini against disturbances
+
+
 # Meshroom path (used for 3D reconstruction on the host computer)
 MESHROOM_ROOT = "/home/danielbugelnig/applications/Meshroom-2023.3.0"   
 ALICE_VISION_ROOT = "/home/danielbugelnig/applications/Meshroom-2023.3.0/aliceVision"
