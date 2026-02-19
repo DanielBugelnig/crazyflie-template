@@ -12,6 +12,7 @@ from crazyflie.core.base_utils import LogLevel
 from crazyflie.core.shared_data import State
 from crazyflie.constants import DRONE_DELAY, DECK_DELAY
 from crazyflie.bitcraze.optitrack_integration.optitrack import NatNetRigidBodyMonitor
+from crazyflie.bitcraze.trajectory import Trajectory
 
 
 RADIUS=0.5
@@ -21,22 +22,23 @@ DIRECTION= "clockwise"
 
 
 swarm = CrazySwarm()
-calculator = bitcraze.trajectory()
+calculator = Trajectory()
 swarm.logging(enable=True, file=True, level=LogLevel.debug)
 swarm._logging_level = LogLevel.debug
 project_dir = swarm.get_directory()
 
 
 
-natnet_monitor = NatNetRigidBodyMonitor()
-natnet_monitor.start()
-time.sleep(1.0)  # wait for monitor to start
-while not natnet_monitor.is_running():
-    time.sleep(0.1)
+# natnet_monitor = NatNetRigidBodyMonitor()
+# natnet_monitor.start()
+# time.sleep(1.0)  # wait for monitor to start
+# while not natnet_monitor.is_running():
+#     time.sleep(0.1)
 try:
     # find swarm members
     swarm.scan()
-    swarm.set_natnet_monitor(natnet_monitor)
+    # swarm.set_natnet_monitor(natnet_monitor)
+    swarm.activate_opitrack_monitor()
     swarm.set_delay(DRONE_DELAY, DECK_DELAY)
     calculator.set_count(swarm.get_count())
     # generate destinations
@@ -53,16 +55,6 @@ try:
     
     # start drones
     swarm.start()
-    # turn slowly with the second drone
-    # if swarm.get_count() == 2:
-    #     drone_index = 1
-    #     swarm.arm(drone_index)
-    #     start = swarm.get_state_single(drone_index)
-    #     for yaw in range(0, -900, -225):
-    #         position = calculator.get_position(x=start.get_x(), y=start.get_y(), z=ALTITUDE, yaw=(yaw / 10))
-    #         swarm.fly_single(drone_index, position, photo=False)
-    #         while not swarm.arrived_single(drone_index, photo=False):
-    #             time.sleep(DRONE_DELAY)
     swarm.arm()
     swarm.turn_to_center()
     
