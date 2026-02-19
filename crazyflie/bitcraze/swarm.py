@@ -27,6 +27,7 @@ from ..core.shared_data import StateManager, State, Flag, Counter
 from .crazyflie import worker as cf_worker
 from .ai_deck import worker as ai_worker
 from .ai_deck import AI_Deck, AIDeckError
+from crazyflie.bitcraze.optitrack_integration.optitrack import NatNetRigidBodyMonitor
 
 class SwarmError(Exception):
     """Generic exception for CrazySwarm-related failures.
@@ -108,13 +109,11 @@ class CrazySwarm(BaseClass):
         self._count = 0
         self._radio_lock = ThreadLock()
         self._enable_aideck = False
+        self.natnet_monitor = None
         return
     
     def logging(self, enable, file, level):
-        """Initialize a CrazySwarm instance.
-
-        Sets up internal member storage, output directory handling, and a
-        thread-level radio lock to serialize low-level radio operations.
+        """Initialize a CrazySwarm logging instance.
         """
         super().logging(enable=enable, file=file, level=level, name="Swarm")
         if enable and file:
@@ -140,7 +139,7 @@ class CrazySwarm(BaseClass):
 
         Performs a radio scan using `cflib` and a local network scan for AI decks,
         then builds an internal list of `_SwarmMember` objects, pairing drones to
-        decks via the configured MAC lookup.
+        decks via the configured MAC lookup (if AI deck use is enabled).
 
         Returns:
             list[str]: List of Crazyflie radio addresses found.
@@ -173,8 +172,28 @@ class CrazySwarm(BaseClass):
             self._members.append(member)
             self._count = self._count + 1
         return radios
+    def activate_opitrack_monitor(self):
+        """Activate the Optitrack NatNet monitor for localization.
+
+        Returns:
+            None
+        """
+        if not self.natnet_monitor:
+            self.print("A natnet monitor is not active.Creating NatNet monitor instance", self.LogLevel.debug)
+            self.natnet_monitor = NatNetRigidBodyMonitor()
+            
+            
+        try:
+            self.natnet_monitor.start()
+        except Exception as e:
+            self.print(f"Failed to start NatNet monitor: {e}", self.LogLevel.error)
+            raise SwarmError(f"Failed to start NatNet monitor: {e}")
+        return
+    
     def set_natnet_monitor(self, monitor):
         """Set the NatNet monitor for Optitrack localization.
+            This function can be called before activationg the monitoring to Optitrack. 
+            It can be used to share one monitor instance between multiple applications (e.g., crazyswarm and additionally for other purposes, as detecting the positions of other objects). 
 
         Args:
             monitor (NatNetRigidBodyMonitor): Instance of the NatNet monitor.
@@ -183,6 +202,7 @@ class CrazySwarm(BaseClass):
         """
         self.natnet_monitor = monitor
         return
+    
     def set_delay(self, delay_s_drone:float, delay_s_deck:float=0.5):
         """Set the loop sleep delays for drone and AI deck workers.
 

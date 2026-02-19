@@ -74,10 +74,10 @@ POSITIONING_SYSTEM = "OptiTrack"  # "OptiTrack"
 # ===== CONFIG Optitrack =====
 CLIENT_IP     = "192.168.1.143"
 SERVER_IP     = "192.168.1.171"
-USE_MULTICAST = False
+USE_MULTICAST = True
 
 
-MOCAP_TX_RATE_HZ  = 120       # Hz for extpos streaming
+MOCAP_TX_RATE_HZ  = 100       # Hz for extpos streaming
 MOCAP_FRESH_MS    = 150       # mocap sample considered fresh if younger than this
 MOCAP_SETTLE_S    = 1.0       # seconds of stable mocap before EKF reset
 TIMEOUT = 5
@@ -109,6 +109,7 @@ LOW_BATTERY = 2.5   # V
 RATED_CURRENT = 0.25    # Ah
 
 # drone positioning thresholds
+MAX_ANGLE_STEP = 45  # deg, maximum angle step per movement command
 ARRIVAL_THRESHOLD_DISTANCE = 0.15  # m
 ARRIVAL_THRESHOLD_ANGLE = 3   # deg
 ARRIVAL_THRESHOLD_DISTANCE_ROUGH = 0.25  # m

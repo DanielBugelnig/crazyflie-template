@@ -47,9 +47,10 @@ from threading import Thread, Lock    # flight commander running in different th
 from multiprocessing.synchronize import Lock as ProcessLock   # hint lock type
 from os import sep  # file paths
 from pynput import keyboard    # keyboard listener
+from collections import deque
 
 from crazyflie.constants import MAC_LOOKUP, LOW_BATTERY, RATED_CURRENT, ARRIVAL_THRESHOLD_DISTANCE, ARRIVAL_THRESHOLD_ANGLE, ARRIVAL_THRESHOLD_DISTANCE_ROUGH, ARRIVAL_THRESHOLD_ANGLE_ROUGH
-from crazyflie.constants import CRAZYFLIES, TIMEOUT, MOCAP_FRESH_MS, MOCAP_SETTLE_S, MOCAP_TX_RATE_HZ, RIGID_BODY_ID_LOOKUP, CONTROLLER_TYPE
+from crazyflie.constants import CRAZYFLIES, TIMEOUT, MOCAP_FRESH_MS, MOCAP_SETTLE_S, MOCAP_TX_RATE_HZ, RIGID_BODY_ID_LOOKUP, CONTROLLER_TYPE, MAX_ANGLE_STEP
 from crazyflie.core.base_utils import BaseClass, LogLevel
 from crazyflie.core.shared_data import State, Counter, Flag
 from crazyflie.bitcraze.optitrack_integration.optitrack import NatNetRigidBodyMonitor
@@ -122,6 +123,7 @@ class CrazyFlie(BaseClass):
         self._cf:Crazyflie = None
         self._scf:SyncCrazyflie = None
         self._log_config:LogConfig = None
+        self._pos_log_time = None
         self._current_state = State()
         self._initial_position = State()
         self._next_position = State()
@@ -299,6 +301,13 @@ class CrazyFlie(BaseClass):
                 self.ext_pos_thread.join()
         except AttributeError:
             pass
+        # stop natnet monitor if running
+        try:
+            if self.natnet_monitor.is_running():
+                self.natnet_monitor.stop()
+            
+        except AttributeError:
+            pass
         # stop logging
         try:
             self._log_config.stop()
@@ -309,6 +318,14 @@ class CrazyFlie(BaseClass):
             self._cf.close_link()
         except AttributeError:
             pass
+        return
+    
+    def __enter__(self):
+        """Context manager entry: returns self."""
+        return self
+    def __exit__(self, exc_type, exc_value, traceback):
+        """Context manager exit: disconnects the drone."""
+        self.disconnect()
         return
     
     """ ---------------------------------------------------------------------------- """
@@ -369,10 +386,23 @@ class CrazyFlie(BaseClass):
         self._blocking = state
         return
 
-    def set_natnet_monitor(self, monitor:NatNetRigidBodyMonitor):
+    def set_natnet_monitor(self, monitor: NatNetRigidBodyMonitor):
+        """Set the NatNet monitor for external position tracking.
+
+        Args:
+            monitor: NatNetRigidBodyMonitor instance for OptiTrack integration.
+
+        Returns:
+            None
+        """
         self.natnet_monitor = monitor
 
     def get_natnet_monitor(self) -> NatNetRigidBodyMonitor:
+        """Get the current NatNet monitor instance.
+
+        Returns:
+            NatNetRigidBodyMonitor: The configured monitor, or None if not set.
+        """
         return self.natnet_monitor
     
     def test_mode(self, state:bool):
@@ -560,7 +590,10 @@ class CrazyFlie(BaseClass):
         self._current_state.pitch = data["stabilizer.pitch"]
         self._current_state.yaw = data["stabilizer.yaw"]
         self._current_state.battery = data["pm.vbat"]
-        self.print(str(self._current_state), self.LogLevel.debug)
+        # log only 1 herz to avoid spamming the console
+        if self._pos_log_time is None or time() - self._pos_log_time > 1:
+            self.print(str(self._current_state), self.LogLevel.debug)
+            self._pos_log_time = time()
         return
     
     def _log_error(self, _, message):
@@ -615,9 +648,11 @@ class CrazyFlie(BaseClass):
         return
 
     """ ---------------------------------------------------------------------------- """
-    def _set(self,name,val):
-        try: self._cf.param.set_value(name, val)
-        except Exception as e: print(f"[param] {name}={val} failed: {e}")
+    def _set(self, name, val):
+        try:
+            self._cf.param.set_value(name, val)
+        except Exception as e:
+            self.print(f"[param] {name}={val} failed: {e}", level=self.LogLevel.error)
         
     def select_localization_mode(self, specific=None):
         """
@@ -634,7 +669,7 @@ class CrazyFlie(BaseClass):
         """
         #self.checking_decks()  # update deck information
         self.positioning_mode = "Optitrack"
-        if specific==None: #automatic mode: take Flow deck if available, else Loco deck
+        if specific is None:  # automatic mode: take Flow deck if available, else Loco deck
             if self.checking_decks("bcFlow2") or self.checking_decks("bcFlow"):
                 #self.print(f"Test flow: {self.checking_decks('bcFlow2')}, {self.checking_decks('bcFlow')}", self.LogLevel.debug)
                 self.print("Flow Deck detected, activating Flow localization", self.LogLevel.info)
@@ -673,7 +708,8 @@ class CrazyFlie(BaseClass):
         if self.positioning_mode=="Optitrack":
             self.rigid_body_id = RIGID_BODY_ID_LOOKUP[self._address]
             if self.natnet_monitor is None:
-                self.print(f"NatNet monitor must be initialized. Cannot activate Optitrack localization for drone {self._name}", self.LogLevel.warning)
+                self.natnet_monitor = NatNetRigidBodyMonitor()
+                self.print(f"NatNet monitor must be initialized. Initialized automatically.", self.LogLevel.warning)
             if self.natnet_monitor.is_running() == False:
                 try: 
                     self.print(f"Activating NatNet monitor for Optitrack localization{self._name}", self.LogLevel.info)
@@ -787,7 +823,7 @@ class CrazyFlie(BaseClass):
         self._next_position = self._initial_position
         self._next_position.set_z(0.5)
         self.print("initial " + str(self._initial_position), self.LogLevel.debug)
-        # start a thread for the flight controller
+        # init the flight commander thread
         self._flight_thread = Thread(target=self._flight_commander, daemon=False, name="commander " + self._address)
         return
     
@@ -837,20 +873,20 @@ class CrazyFlie(BaseClass):
                         found = True
             if not found:
                 self.print("No deck parameters found", self.LogLevel.warning)
-            return  # kein spezieller Wert – reine Auflistung
+            return  
         else:
             try:
-                val = self._scf.cf.param.get_value(f'deck.{specific}')
+                val = int(self._scf.cf.param.get_value(f'deck.{specific}'))
             except ValueError:
-                self.print(f'Deck parameter {specific} not found in group, self.LogLevel.error)')
+                self.print(f'Deck parameter {specific} not found in group', self.LogLevel.error)
                 print(f'deck.{specific} not found')
-                return 0
+                return False
             self.print(f'Deck {specific}, value: {val}', self.LogLevel.info)
             #print(f'deck.{specific} = {val}')
             #print(type(val))
             if val == 0:
-                
                 return False
+            return True
 
 
     def read_parameters(self, read_all=False):
@@ -934,15 +970,15 @@ class CrazyFlie(BaseClass):
                     else:
                         # set setpoint
                         with self._lock:
-                            coordinates = deepcopy(self._next_position)
+                            coordinates = self._next_position.copy()
                         angle_diff = self._angle_diff(coordinates.yaw,self._current_state.yaw)
                         #self.print(f"angle diff: {angle_diff}", self.LogLevel.debug)
                         # check against the maximum allowed rotation
-                        if abs(angle_diff) > 45:
+                        if abs(angle_diff) > MAX_ANGLE_STEP:
                             #self.print(f"angle diff {angle_diff} too large, limiting to 45 degrees", self.LogLevel.debug)
-                            coordinates.yaw = self._current_state.yaw + 45 * (1 if angle_diff > 0 else -1)
+                            coordinates.yaw = self._current_state.yaw + MAX_ANGLE_STEP * (1 if angle_diff > 0 else -1)
                             self.print(f"error in position measurement, new yaw correction: input: {coordinates.yaw}, current pos {self._current_state.yaw}", self.LogLevel.debug)
-                        self.print(f"Sending setpoint to {self._name}: [{coordinates.x},{coordinates.y},{coordinates.z},{coordinates.yaw}]", level=LogLevel.debug)
+                        self.print(f"FC: Sending setpoint to {self._name}: [{coordinates.x},{coordinates.y},{coordinates.z},{coordinates.yaw}]", level=LogLevel.debug)
                         self._scf.cf.commander.send_position_setpoint(coordinates.x, coordinates.y, coordinates.z, coordinates.yaw)
                 # delay to let time for other threads
                 sleep(self._delay)
@@ -1017,7 +1053,7 @@ class CrazyFlie(BaseClass):
                         break
                     if elapsed >= timeout:
                         self.print(f"Drone {self._name} estimator timeout after {timeout} seconds", self.LogLevel.warning)
-                        break
+                        raise RuntimeError(f"Drone {self._name} estimator timeout after {timeout} seconds")
         except KeyboardInterrupt:
             raise KeyboardInterrupt
         finally:
@@ -1135,7 +1171,6 @@ class CrazyFlie(BaseClass):
         Returns:
             None
         """
-        # stop the motors. did not work, deeper insight required
         
         with self._lock:
             try:
@@ -1357,7 +1392,15 @@ class CrazyFlie(BaseClass):
         return
     
     
-    def _on_press(self,key):
+    def _on_press(self, key):
+        """Keyboard press event handler.
+
+        Args:
+            key: The key that was pressed.
+
+        Returns:
+            None
+        """
         if key == keyboard.Key.ctrl:
             self.keyboard_listener.ctrl_pressed = True
         elif key == keyboard.Key.alt:
@@ -1369,7 +1412,7 @@ class CrazyFlie(BaseClass):
             #print(f'Special key {key} pressed')
             pass
         self.keyboard_listener._enabling_control_mode()
-        if (self.keyboard_listener.control_mode):
+        if self.keyboard_listener.control_mode:
             try:
                 if key.char == 'q':
                     self.print("Emergency stop via Keyboard 'q'", self.LogLevel.warning)
@@ -1382,13 +1425,21 @@ class CrazyFlie(BaseClass):
             return
            
 
-    def _on_release(self,key):
+    def _on_release(self, key):
+        """Keyboard release event handler.
+
+        Args:
+            key: The key that was released.
+
+        Returns:
+            bool or None: False to stop the listener, None otherwise.
+        """
         if key == keyboard.Key.ctrl:
             self.keyboard_listener.ctrl_pressed = False
         elif key == keyboard.Key.alt:
             self.keyboard_listener.alt_pressed = False
         self.keyboard_listener._disabling_control_mode()
-        
+
         #print(f'Key {key} released')
         if key == keyboard.Key.esc:
             self.keyboard_listener.listener.stop()
@@ -1401,7 +1452,7 @@ class CrazyFlie(BaseClass):
 
 """ ---------------------------------------------------------------------------- """
 
-def worker(flag:Flag, counter:Counter, lock:ProcessLock, thread_lock:Lock, position:State, status:State, delay, address, directory:str, average_count=10, log_enable=True, log_file=True, log_level=LogLevel.message, localization_mode=None, natnet_monitor=None):
+def worker(flag: Flag, counter: Counter, lock: ProcessLock, thread_lock: Lock, position: State, status: State, delay, address, directory: str, average_count=10, log_enable=True, log_file=True, log_level=LogLevel.message, localization_mode=None, natnet_monitor=None):
     """Orchestrate a single Crazyflie in a separate process/thread loop.
 
     The `worker` function encapsulates the full lifecycle for one drone:

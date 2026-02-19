@@ -272,7 +272,8 @@ class NatNetClient:
                               socket.inet_aton(self.local_ip_address))
             try:
                 # Use bind in data socket due to the nature of UDP
-                result.bind((self.local_ip_address, self.data_port))
+                # Bind to '' (all interfaces) or multicast address for proper multicast reception
+                result.bind(('', self.data_port))
             except socket.error as e:
                 print(f'Multicast Error: {e}')
                 sys.exit(1)

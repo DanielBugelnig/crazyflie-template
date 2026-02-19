@@ -24,14 +24,14 @@ class StateManager(BaseManager):
 
 class State:
     # defines the state of the drone (serializable)
-    def __init__(self, x=0, y=0, z=0, pitch=0, roll=0, yaw=0):
+    def __init__(self, x=0, y=0, z=0, pitch=0, roll=0, yaw=0, battery=0):
         self.x = x           # x position in meters
         self.y = y           # y position in meters
         self.z = z           # z position in meters
         self.pitch = pitch   # pitch angle in degrees (-180 - +180)
         self.roll = roll     # roll angle in degrees (-180 - +180)
         self.yaw = yaw       # yaw angle in degrees (-180 - +180)
-        self.battery = 0     # battery percentage with 10% resolution
+        self.battery = battery     # battery percentage with 10% resolution
         self.grounded = False
         return
     
@@ -94,7 +94,7 @@ class State:
         return self.grounded
     
     def copy(self):
-        return State(self.x, self.y, self.z, self.pitch, self.roll, self.yaw)
+        return State(self.x, self.y, self.z, self.pitch, self.roll, self.yaw, self.grounded)
     
     # magic functions
     def __str__(self):
@@ -134,6 +134,9 @@ class State:
     
     def __eq__(self, other):
         return not self.__ne__(other)
+    
+    def copy(self):
+        return State(self.x, self.y, self.z, self.pitch, self.roll, self.yaw, self.battery)
     
 """ ---------------------------------------------------------------------------- """
 
@@ -396,4 +399,3 @@ class Flag:
     def set_on_position_no_save(self):
         self.value = self._on_position_no_save
         return
-
