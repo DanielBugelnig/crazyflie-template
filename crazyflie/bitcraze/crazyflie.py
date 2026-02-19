@@ -54,6 +54,7 @@ from crazyflie.constants import CRAZYFLIES, TIMEOUT, MOCAP_FRESH_MS, MOCAP_SETTL
 from crazyflie.core.base_utils import BaseClass, LogLevel
 from crazyflie.core.shared_data import State, Counter, Flag
 from crazyflie.bitcraze.optitrack_integration.optitrack import NatNetRigidBodyMonitor
+from crazyflie.bitcraze.trajectory import Trajectory
 
 class CrazyFlieError(Exception):
     """Exception raised for Crazyflie-specific errors.
@@ -119,6 +120,7 @@ class CrazyFlie(BaseClass):
         self._cf_ID = CrazyFlie._cf_ID
         CrazyFlie._cf_ID += 1
         self.natnet_monitor:NatNetRigidBodyMonitor = None
+        self.path_planner:Trajectory = None
         self.ext_pos_thread:Thread = None
         self._cf:Crazyflie = None
         self._scf:SyncCrazyflie = None
@@ -407,6 +409,25 @@ class CrazyFlie(BaseClass):
         """
         return self.natnet_monitor
     
+    def set_path_planner(self, path_planner):
+        """Set the path planner for the drone.
+
+        Args:
+            path_planner: The path planner instance to use.
+
+        Returns:
+            None
+        """
+        self.path_planner = path_planner
+
+    def get_path_planner(self):
+        """Get the current path planner instance.
+
+        Returns:
+            The currently set path planner, or None if not set.
+        """
+        return self.path_planner
+
     def test_mode(self, state:bool):
         """Enable/disable test mode.
 
@@ -1138,8 +1159,12 @@ class CrazyFlie(BaseClass):
         if not isinstance(position, State) or not self._valid_pose(position):
             self.print("invalid position format", self.LogLevel.error)
             raise CrazyFlieError("invalid position format")
+        if self.path_planner is None:
+            self.set_path_planner(Trajectory())
+        # keep position in bounding box
+        verified_position = self.path_planner._keep_in_box(position)
         with self._lock:
-            self._next_position = position
+            self._next_position = verified_position
         return
 
     def land(self, position:State=None):
