@@ -6,6 +6,7 @@
 
 from multiprocessing import Lock                    # synchronization
 from multiprocessing.managers import BaseManager    # sharing state data between processes
+import math
 
 """ ---------------------------------------------------------------------------- """
 
@@ -95,7 +96,6 @@ class State:
     
     def copy(self):
         return State(self.x, self.y, self.z, self.pitch, self.roll, self.yaw, self.grounded)
-    
     # magic functions
     def __str__(self):
         data = "state:\n"
@@ -115,25 +115,24 @@ class State:
         self.__dict__ = data
         return
     
-    def __ne__(self, other):
-        if not isinstance(other, State):
-            return True
-        if self.x != other.x:
-            return True
-        if self.y != other.y:
-            return True
-        if self.z != other.z:
-            return True
-        if self.yaw != other.yaw:
-            return True
-        if self.pitch != other.pitch:
-            return True
-        if self.roll != other.roll:
-            return True
-        return False
-    
     def __eq__(self, other):
-        return not self.__ne__(other)
+        if not isinstance(other, State):
+            return NotImplemented
+
+        return (
+            math.isclose(self.x, other.x, abs_tol=1e-4) and
+            math.isclose(self.y, other.y, abs_tol=1e-4) and
+            math.isclose(self.z, other.z, abs_tol=1e-4) and
+            math.isclose(self.yaw, other.yaw, abs_tol=1e-3) and
+            math.isclose(self.pitch, other.pitch, abs_tol=1e-3) and
+            math.isclose(self.roll, other.roll, abs_tol=1e-3)
+        )
+
+    def __ne__(self, other):
+        eq = self.__eq__(other)
+        if eq is NotImplemented:
+            return NotImplemented
+        return not eq
     
     def copy(self):
         return State(self.x, self.y, self.z, self.pitch, self.roll, self.yaw, self.battery)

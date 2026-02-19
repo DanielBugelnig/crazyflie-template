@@ -127,6 +127,7 @@ class CrazyFlie(BaseClass):
         self._current_state = State()
         self._initial_position = State()
         self._next_position = State()
+        self._last_sent_position = None
         self._landing_position:State = None
         self._flight_thread:Thread = None
         self._lock = Lock()
@@ -395,6 +396,7 @@ class CrazyFlie(BaseClass):
         Returns:
             None
         """
+        self.print("NatNet monitor set", level=self.LogLevel.info)
         self.natnet_monitor = monitor
 
     def get_natnet_monitor(self) -> NatNetRigidBodyMonitor:
@@ -978,7 +980,9 @@ class CrazyFlie(BaseClass):
                             #self.print(f"angle diff {angle_diff} too large, limiting to 45 degrees", self.LogLevel.debug)
                             coordinates.yaw = self._current_state.yaw + MAX_ANGLE_STEP * (1 if angle_diff > 0 else -1)
                             self.print(f"error in position measurement, new yaw correction: input: {coordinates.yaw}, current pos {self._current_state.yaw}", self.LogLevel.debug)
-                        self.print(f"FC: Sending setpoint to {self._name}: [{coordinates.x},{coordinates.y},{coordinates.z},{coordinates.yaw}]", level=LogLevel.debug)
+                        if self._last_sent_position is None or self._last_sent_position.__ne__(coordinates):
+                            self.print(f"FC: Sending setpoint to {self._name}: [{coordinates.x},{coordinates.y},{coordinates.z},{coordinates.yaw}]", level=LogLevel.debug)
+                            self._last_sent_position = coordinates.copy()
                         self._scf.cf.commander.send_position_setpoint(coordinates.x, coordinates.y, coordinates.z, coordinates.yaw)
                 # delay to let time for other threads
                 sleep(self._delay)
