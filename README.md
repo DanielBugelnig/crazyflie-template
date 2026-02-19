@@ -62,3 +62,6 @@ Enter your fixed values (i.e. antenna adresses, flight space boundaries, rigid_b
 - crazyflie.bitcraze.trajectory.Trajectory — circle/formation/path helpers
 - crazyflie.bitcraze.optitrack_integration.optitrack.NatNetRigidBodyMonitor — thread-safe NatNet interface
 
+# Bug reporting
+If you find a bug or a feature is missing, please open an Issue on GitHub.
+
