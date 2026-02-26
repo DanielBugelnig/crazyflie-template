@@ -1,6 +1,6 @@
 # Crazyflie template repository for developing with cflib
 
-Lightweight template and utilities to work with Bitcraze Crazyflie drones,
+Template and utilities to work with Bitcraze Crazyflie drones,
 AI-Deck cameras, and OptiTrack/NatNet motion capture integration.
 
 ## Setup
@@ -30,30 +30,53 @@ pip install -r requirements.txt
 ```
 
 ## Usage
-Enter your fixed values (i.e. antenna adresses, flight space boundaries, rigid_body_ids, time constants, mac addresses of AI-deck...) in [crazyflie/constants.py](crazyflie/constants.py).
 
+### Starting a New Project
 
-2. Run an example (check battery charge)
+The `project/` folder is your workspace for developing new applications:
+
+1. Navigate to the project folder:
     ```sh
-    python examples/charging.py
+    cd project
     ```
-3. Explore other examples in the `examples/` folder:
-   - examples/test_crazyflie.py — single-drone demo
-   - examples/test_swarm.py — swarm demo using trajectories
-   - examples/test_trajectory.py — trajectory generator demo
+
+2. Use the configuration GUI to set up your project constants:
+    ```sh
+    python config_gui.py
+    ```
+   This GUI allows you to configure:
+   - Crazyflie URIs and hardware settings
+   - OptiTrack positioning system parameters
+   - Control parameters and flight boundaries
+   - AI-Deck MAC addresses
+
+3. Start developing your application in the `project/` folder. You can reference the examples for guidance.
+
+### Running Examples
+
+Explore example scripts in the `examples/` folder to learn the API:
+- `examples/charging.py` — check battery charge
+- `examples/test_crazyflie.py` — single-drone demo
+- `examples/test_swarm.py` — swarm demo using trajectories
+- `examples/test_trajectory.py` — trajectory generator demo
 
 ## Repository layout
 
-- crazyflie/
+- **project/** — your workspace for new applications and custom scripts
+  - config_gui.py — interactive configuration manager
+  - test.py — your main development file
+  - test_config.json — saved configuration settings
+- **crazyflie/** — core library modules
   - bitcraze/
     - crazyflie.py — High-level CrazyFlie controller
     - ai_deck.py — AI-Deck camera interface (not tested yet)
     - swarm.py — Swarm orchestration helpers
     - trajectory.py — Trajectory generation utilities
-    - optitrack_integration/  - scripts for integrating Optitrack position data
-- crazyflie/core/
-  - base_utils.py — logging & helper utilities
-- examples/ — runnable demonstration scripts
+    - optitrack_integration/ — scripts for integrating OptiTrack position data
+  - core/
+    - base_utils.py — logging & helper utilities
+  - constants.py — project configuration constants
+- **examples/** — runnable demonstration scripts
 
 ## Key modules
 
