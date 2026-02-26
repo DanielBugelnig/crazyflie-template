@@ -1,0 +1,107 @@
+{
+    "OP_SYSTEM": "Linux",
+    "WIFI_NAME": "ai_deck",
+    "WIFI_PASSWORD": "bitcraze",
+    "CAMERA": "RGB",
+    "DISPLAY_IMAGES": true,
+    "CONTROLLER_TYPE": 5,
+    "CRAZYFLIES": [
+        "radio://0/90/2M/E7E7E7E701",
+        "radio://0/90/2M/E7E7E7E702",
+        "radio://0/90/2M/E7E7E7E703",
+        "radio://0/90/2M/E7E7E7E704",
+        "radio://0/100/2M/E7E7E7E704"
+    ],
+    "MAC_LOOKUP": {
+        "radio://0/100/2M/E7E7E7E701": "78:21:84:7a:4f:70",
+        "radio://0/100/2M/E7E7E7E702": "78:21:84:7b:0f:58",
+        "radio://0/100/2M/E7E7E7E703": "78:21:84:7b:0b:8c",
+        "radio://0/80/2M/E7E7E7E704": "78:21:84:7b:0f:58",
+        "radio://0/90/2M/E7E7E7E705": "78:21:84:7a:4f:71",
+        "radio://0/100/2M/E7E7E7E706": "78:21:84:7a:4f:70",
+        "radio://0/100/2M/E7E7E7E707": "78:21:84:7a:50:c8",
+        "radio://0/95/2M/E7E7E7E708": "78:21:84:7b:0b:8d",
+        "radio://0/100/2M/E7E7E7E709": "78:21:84:7b:0b:8c",
+        "radio://0/100/2M/E7E7E7E710": "78:21:84:7a:4f:71"
+    },
+    "RIGID_BODY_ID_LOOKUP": {
+        "radio://0/90/2M/E7E7E7E701": 12,
+        "radio://0/90/2M/E7E7E7E702": 13,
+        "radio://0/90/2M/E7E7E7E703": 14,
+        "radio://0/90/2M/E7E7E7E704": 15
+    },
+    "LOW_BATTERY": "2.5",
+    "RATED_CURRENT": "0.25",
+    "POSITIONING_SYSTEM": "OptiTrack",
+    "CLIENT_IP": "192.168.1.143",
+    "SERVER_IP": "192.168.1.171",
+    "USE_MULTICAST": true,
+    "MOCAP_TX_RATE_HZ": "100",
+    "MOCAP_FRESH_MS": "150",
+    "MOCAP_SETTLE_S": "1.0",
+    "TIMEOUT": "5",
+    "FLYING_AREA": [
+        {
+            "x": -1.5,
+            "y": -1.0,
+            "z": 0.1
+        },
+        {
+            "x": 1.5,
+            "y": -1.0,
+            "z": 0.1
+        },
+        {
+            "x": 1.5,
+            "y": 1.0,
+            "z": 0.1
+        },
+        {
+            "x": -1.5,
+            "y": 1.0,
+            "z": 0.1
+        },
+        {
+            "x": -1.5,
+            "y": -1.0,
+            "z": 2.0
+        },
+        {
+            "x": 1.5,
+            "y": -1.0,
+            "z": 2.0
+        },
+        {
+            "x": 1.5,
+            "y": 1.0,
+            "z": 2.0
+        },
+        {
+            "x": -1.5,
+            "y": 1.0,
+            "z": 2.0
+        }
+    ],
+    "DRONE_DELAY": "0.1",
+    "DECK_DELAY": "0.5",
+    "ARRIVAL_THRESHOLD_DISTANCE": "0.15",
+    "ARRIVAL_THRESHOLD_ANGLE": "3",
+    "ARRIVAL_THRESHOLD_DISTANCE_ROUGH": "0.25",
+    "ARRIVAL_THRESHOLD_ANGLE_ROUGH": "8",
+    "MAX_ANGLE_STEP": "45",
+    "ATTRACTION_FACTOR": "1.4",
+    "REPULSION_FACTOR": "0.1",
+    "REPULSION_FACTOR_OBJECT": "10",
+    "REPULSION_FACTOR_DRONE": "0.1",
+    "REPULSION_FACTOR_WALL": "0.2",
+    "WINDOW_SIZE": "10",
+    "THRESHOLD": "0.05",
+    "RANDOM_WALK_FACTOR": "0.1",
+    "OBJECT_RADIUS": "0.3",
+    "DRONE_RADIUS": "0.8",
+    "WALL_RADIUS": "0.6",
+    "GOAL_RADIUS": "0.05",
+    "STEPSIZE": "0.01",
+    "RESOLUTION": "0.1",
+    "SPHERE_POINTS": "400"
+}
