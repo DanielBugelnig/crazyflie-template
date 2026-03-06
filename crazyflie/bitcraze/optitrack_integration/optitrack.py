@@ -5,7 +5,7 @@ from typing import Dict, Optional, Tuple
 from unittest.mock import Base
 from .NatNetClient import NatNetClient
 # from NatNetClient import NatNetClient  # from OptiTrack NatNet SDK samples
-from crazyflie.constants import CLIENT_IP, SERVER_IP, USE_MULTICAST, RIGID_BODY_ID, MOCAP_TX_RATE_HZ
+from crazyflie.constants import CLIENT_IP, SERVER_IP, USE_MULTICAST, MOCAP_TX_RATE_HZ
 
 Pose = Tuple[float, float, float]
 Quat = Tuple[float, float, float, float]

@@ -9,11 +9,13 @@ from crazyflie.bitcraze.crazyflie import CrazyFlie
 from crazyflie.bitcraze.ai_deck import AI_Deck
 import crazyflie.bitcraze.swarm as swarm_module
 from crazyflie.core.base_utils import LogLevel
+from crazyflie.bitcraze.trajectory import Trajectory
 
 
 if __name__ == "__main__":
-    drone = bitcraze.crazyflie()
-    calculator = bitcraze.trajectory()
+    drone = CrazyFlie()
+    drone.logging(enable=True, file=True, level=LogLevel.debug)
+    calculator = Trajectory()
     
     drone.logging(enable=True, file=True, level=LogLevel.message)
     calculator.logging(enable=True, file=True, level=LogLevel.message)
