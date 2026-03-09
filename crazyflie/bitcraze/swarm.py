@@ -517,7 +517,7 @@ class CrazySwarm(BaseClass):
             raise SwarmError("drone not found")
         return
     
-    def fly_single(self, index:int, position:State, photo:bool=True):
+    def fly_single(self, index:int, position:State, photo:bool=False):
         """Command a single drone to fly to a given position.
 
         Optionally flag the position to trigger image capture on arrival.

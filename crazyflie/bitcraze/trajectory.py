@@ -88,7 +88,38 @@ class Trajectory(BaseClass):
         self._bounds["fr"] = self._anchors[2]
         self.print("Anchor positions set", level=LogLevel.info)
         return
-    
+    def validate_position(self, input:State) -> State:
+        """Validates a given position against the predefined bounding box.
+
+        Args:
+            input (State): Position to be validated.
+
+        Returns:
+            State: Validated position within the bounding box.
+        """
+        try:
+            x_min = max(self._bounds["bl"].x, self._bounds["br"].x)  
+            x_max = min(self._bounds["fl"].x, self._bounds["fr"].x)
+            y_min = max(self._bounds["bl"].y, self._bounds["fl"].y)
+            y_max = min(self._bounds["br"].y, self._bounds["fr"].y)
+            z_min = min(self._bounds["up"], self._bounds["down"])
+            z_max = max(self._bounds["up"], self._bounds["down"])
+        except (AttributeError, KeyError) as e:
+            self.print("anchor positions not set" + str(e), self.LogLevel.error)
+            raise TrajectoryError("anchor positions not set")
+        # adding security margin
+        x_min += 0.1
+        x_max -= 0.1
+        y_min += 0.1
+        y_max -= 0.1
+        z_min += 0.1
+        z_max -= 0.1
+        if input.get_x() > x_max or input.get_x() < x_min or input.get_y() > y_max or input.get_y() < y_min or input.get_z() > z_max or input.get_z() < z_min:
+            self.print(f"position {input} out of bounds", self.LogLevel.warning)
+            return False
+        return True
+       
+            
     def _keep_in_box(self, input:State) -> State:
         """Keeps a given position within the predefined bounding box.
 
