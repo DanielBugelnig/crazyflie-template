@@ -2,8 +2,6 @@ import numpy as np, pandas as pd, csv, os
 from math import sin, cos, radians, pi
 from matplotlib import pyplot as plt
 from pathlib import Path
-
-from project.drafts.test_plot_trajectory import add_yaw
 from safety_scoring import VirtualCage
 
 #OFFLINE PLANNING
@@ -178,15 +176,20 @@ def save_waypoints(waypoints, filename):
             writer.writerow(p)
     print(f"\nTrajectory saved to {filename}")
 
-if __name__ == '__main__':
+def main():
+    base_path = Path(__file__).resolve().parents[0]
+    save_dir = base_path / 'trajectories'
+    os.makedirs(save_dir, exist_ok=True)
+ 
     #check ideal pre-defined trajectories
     trajectory = TrajectoryPlanner(0.8)
     circle = trajectory.generate_circle(1.0)
     plot_waypoints([circle])
-    save_waypoints(circle,'ideal_trajectories/circle.csv')
+    save_waypoints(circle,base_path / 'ideal_trajectories/circle.csv')
 
     #filter real time trajectories
-    real_trajectory = load_waypoints('trajectories/test_trajectory.csv')
+    filename = 'test4'
+    real_trajectory = load_waypoints(save_dir/ f'{filename}.csv')
 
     cage = VirtualCage(
         x_bounds=(-1.5, 1.5),
@@ -195,4 +198,19 @@ if __name__ == '__main__':
     )
     processed_trajectory = add_yaw(filter_waypoints(real_trajectory,cage=cage))
     plot_waypoints([real_trajectory, processed_trajectory], labels=['real','processed'])
-    save_waypoints(processed_trajectory,'trajectories/test_trajectory_processed.csv')
+    save_waypoints(processed_trajectory, save_dir / f'{filename}_processed.csv')
+
+
+def check_all_trajectories():
+    base_path = Path(__file__).resolve().parents[0]
+    save_dir = base_path / 'trajectories'
+    os.makedirs(save_dir, exist_ok=True)
+
+    for file in os.listdir(save_dir):
+        if os.path.isfile(os.path.join(save_dir, file)):
+            print(file)
+            traj = load_waypoints(save_dir/ f'{file}')
+            plot_waypoints([traj], labels=[file])
+
+if __name__ == '__main__':
+    main()

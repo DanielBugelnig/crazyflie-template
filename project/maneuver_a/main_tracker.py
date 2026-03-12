@@ -38,6 +38,7 @@ filename = None
 # Constants & Globals
 UPDATE_RATE = 10  # Hz
 ID = 38
+URI = 'radio://0/100/2M/E7E7E7E704'
 pos = None
 current_waypoints = []
 recording = False
@@ -53,7 +54,7 @@ print("\n--- Initializing Flight Systems ---")
 planner = TrajectoryPlanner(altitude=1.0, sample_rate=100)
 ideal_trajectory = planner.generate_circle(radius=1.5)
 reference_file = save_dir / 'ideal_circle_reference.csv'
-planner.export_to_csv(ideal_trajectory, reference_file)
+#planner.export_to_csv(ideal_trajectory, reference_file)
 # place for future evaluator
 cage = VirtualCage(x_bounds=(-3.0, 3.0), y_bounds=(-3.0, 3.0), z_bounds=(0.0, 3.0))
 print("--- Systems Ready ---\n")
@@ -118,10 +119,19 @@ def update_filename_path():
 
     is_typing = False
 
+def get_input(text):
+    """Prompts user to update the active filename"""
+    global is_typing
+    is_typing = True
+    try:
+        user = input(f'\n{text}: ').lower().strip()
+    finally:
+        is_typing = False
+    return user
 
 def on_press(key):
     """Handles all keyboard inputs during operation"""
-    global recording, filename, current_waypoints, monitor
+    global recording, filename, current_waypoints, monitor,is_typing
 
     if is_typing:   return
 
@@ -144,13 +154,13 @@ def on_press(key):
 
         elif key.char == 'm':
             if filename is None: update_filename_path()
-            plot_waypoints(load_waypoints(filename))
+            plot_waypoints([load_waypoints(filename)])
 
         elif key.char == 'q':
             if filename is None: update_filename_path()
 
             raw = load_waypoints(filename)
-            traj_yaw = add_yaw(filter_waypoints(raw))
+            traj_yaw = add_yaw(filter_waypoints(raw,threshold=0.2,min_height=0.5), make_smooth=True)
             print(f'\nOld # of points: {len(raw)}, new filtered: {len(traj_yaw)}')
             processed_file = processed_dir / filename.name
             save_waypoints(traj_yaw, processed_file)
@@ -158,8 +168,6 @@ def on_press(key):
 
         elif key.char == 'f':
             if filename is None or not filename.exists():
-
-
                 update_filename_path()
                 processed_file = processed_dir / filename.name
 
@@ -172,7 +180,7 @@ def on_press(key):
                 else:
                     print(f"\nError: Could not find {filename.name}")
                     return
-
+            else: file_to_load=filename
             # LOADING TRAJECTORY ------------
             print(f"\nLoading trajectory from: {file_to_load.name}")
             raw_waypoints = load_waypoints(file_to_load)
@@ -188,32 +196,40 @@ def on_press(key):
 
             # CHECK TRAJECTORY BEFORE FLYING -----------
             calculator = Trajectory()
-            calculator.logging(enable=False, file=False, level=calculator.LogLevel.message)
+            calculator.logging(enable=False, file=False, level=calculator.LogLevel.debug)
             calculator.set_count(1)
 
             positions = create_trajectory(calculator, enhanced_waypoints.tolist(), no_yaw=False)
-            toFly = input('Check trajectory. Enter "y" to continue: ').strip().lower()
+            
             plot_waypoints(positions, calculator=calculator)
+         
 
             # FLYING LOOP -----------
-            if toFly is 'y':
-                cf = CrazyFlie()
-                cf.logging(enable=True, file=True, level=base.LogLevel.debug)
-                cf.set_natnet_monitor(monitor)
+            #toFly = get_input('Check trajectory. Enter "y" to continue: ')
+            # toFly = input('\nCheck trajectory. Enter "y" to continue: ').lower().strip()
 
-                try:
-                    cf.scan()
-                    cf.connect(start_flying=True)
-                    for pos_state in positions:
-                        cf.fly(pos_state)
-                        while not cf.arrived(pos_state):
-                            time.sleep(0.1)
-                        time.sleep(0.2)
-                    cf.land()
-                except (bitcraze.CrazyFlieError, KeyboardInterrupt):
-                    print("\nFlight interrupted.")
-                finally:
-                    cf.disconnect()
+            # if toFly == 'y':
+            #     is_typing = True
+            #     print('Starting flight...')
+
+            cf = CrazyFlie()
+            cf.logging(enable=True, file=True, level=base.LogLevel.debug)
+            cf.set_natnet_monitor(monitor)
+
+            try:
+                cf.scan(specific=URI)
+                cf.connect(start_flying=True)
+                for pos_state in positions:
+                    cf.fly(pos_state)
+                    while not cf.arrived(pos_state):
+                        time.sleep(0.1)
+                    time.sleep(0.2)
+                cf.land()
+            except (bitcraze.CrazyFlieError, KeyboardInterrupt):
+                print("\nFlight interrupted.")
+            finally:
+                cf.disconnect()
+                is_typing = False
 
     except AttributeError:
         pass

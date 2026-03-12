@@ -28,6 +28,9 @@ def visualise_planned_path_3D(trajectories:list[np.ndarray]) -> None:
     colors = [cmap(i % 10) for i in range(n)]
 
     for i, traj in enumerate(trajectories):
+
+        traj = add_yaw(filter_waypoints(traj))
+       
         ax.plot(traj[:, 0], traj[:, 1], traj[:, 2], '-o', markersize=3, color=colors[i], label=labels[i])
         ax.scatter(traj[:, 0], traj[:, 1], traj[:, 2], color=colors[i], s=10, alpha=0.3)
 
@@ -49,33 +52,39 @@ def plot_trajectory(filename=None, trajectory=None):
 
 
 #to smooth trajectory
-""" -> remove repeated and close points"""
-def filter_points(trajectory, threshold=0.001):
-    new_trajectory = [trajectory[0]]
-    for point in trajectory[1:]:
-        prev = new_trajectory[-1]
-        if np.linalg.norm(prev - point) >= threshold:  # keep only far enough points
-            new_trajectory.append(point)
-    return np.array(new_trajectory)
+def filter_waypoints(trajectory, threshold=0.1, window_size=3, min_height=0.2):
+    trajectory = np.asarray(trajectory)
+    if len(trajectory) == 0:
+        return trajectory
 
-""" -> smooth by moving average"""
-def smooth_path(trajectory, window_size=3):
-    smoothed = np.copy(trajectory)
-    for i in range(trajectory.shape[0]):
-        start = max(0, i - window_size + 1)
-        smoothed[i] = np.mean(trajectory[start:i + 1], axis=0)
+    # close points
+    filtered = [trajectory[0]]
+    for p in trajectory[1:]:
+        if np.linalg.norm(p - filtered[-1]) >= threshold:
+            filtered.append(p)
+    filtered = np.array(filtered)
+
+    # smooth 
+    smoothed = np.copy(filtered)
+    half_w = window_size // 2
+
+    for i in range(len(filtered)):
+        start = max(0, i - half_w)
+        end = min(len(filtered), i + half_w + 1)
+        smoothed[i] = np.mean(filtered[start:end], axis=0)
+
+    # height handling
+    smoothed[:, 2] = np.maximum(smoothed[:, 2], min_height)
+    smoothed[0, 2] = min_height
     return smoothed
 
 """ -> add yaw vector"""
-def add_yaw(trajectory, smooth_window=8, min_dist=0.01,make_smooth=False) -> np.ndarray:
+def add_yaw(trajectory, smooth_window=8, min_dist=0.01,make_smooth=False, min_height=0.4) -> np.ndarray:
     dx = np.diff(trajectory[:, 0])
     dy = np.diff(trajectory[:, 1])
 
     yaw_rad = np.arctan2(dy, dx) #raw yaw in rad
-
     dist_2d = np.hypot(dx, dy)
-    # remove noise at the beginning
-    if dist_2d[0] < min_dist:   yaw_rad[0] = 0.0
 
     # fix vertical drops
     for i in range(1, len(yaw_rad)):
@@ -99,23 +108,14 @@ def add_yaw(trajectory, smooth_window=8, min_dist=0.01,make_smooth=False) -> np.
 
 
 def main():
-    filename = Path(__file__).resolve().parents[0] / 'trajectories' / 'test_trajectory.csv'
+    filename = Path(__file__).resolve().parents[0] / 'trajectories' / 'testing.csv'
     #plot_trajectory(filename)
 
     # Load raw trajectory
     trajectory_points = pd.read_csv(filename)[['x','y','z']].to_numpy()
-    # Filter trajectory + optimise # of points
-    trajectory_filtered = filter_points(trajectory_points, threshold=0.1)
-    trajectory_smoothed = smooth_path(trajectory_filtered)
 
-    plot_trajectory(trajectory=[trajectory_points, trajectory_filtered])
-    plot_trajectory(trajectory=[trajectory_filtered, trajectory_smoothed])
-
-    print(f'Old # of points: {len(trajectory_points)}, new filtered: {len(trajectory_filtered)}, new filtered + smoothed: {len(trajectory_smoothed)}')
-
-    #check new func to add yaw
-    traj_yaw = add_yaw(trajectory_smoothed)
-    plot_trajectory(trajectory=[ traj_yaw,add_yaw(trajectory_smoothed,make_smooth=True)])
+    plot_trajectory(trajectory=[trajectory_points])
+ 
 
 if __name__ == '__main__':
     main()
