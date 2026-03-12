@@ -42,7 +42,8 @@ def filter_waypoints(trajectory, threshold=0.1, window_size=3, min_height=0.2, c
         if np.linalg.norm(p - filtered[-1]) >= threshold:
             filtered.append(p)
     filtered = np.array(filtered)
-    print(f'Filtered {len(trajectory) - len(filtered)} points')
+    print(f'\nOriginal: {len(trajectory)} points, filtered: {len(filtered)}')
+    print(f'Removed {len(trajectory) - len(filtered)} points')
 
     #smoothing by moving average
     smoothed = np.copy(filtered)
@@ -53,10 +54,13 @@ def filter_waypoints(trajectory, threshold=0.1, window_size=3, min_height=0.2, c
         smoothed[i] = np.mean(filtered[start:end], axis=0)
 
     #enforce min height
-    current_min_z = np.min(smoothed[:, 2])
-    if current_min_z < min_height:
-        z_offset = min_height - current_min_z
-        smoothed[:, 2] += z_offset #lift entire trajectory
+    smoothed[:, 2] = np.maximum(smoothed[:, 2], min_height)
+    smoothed[0, 2] = min_height
+    smoothed[-1, 2] = min_height
+    # current_min_z = np.min(smoothed[:, 2])
+    # if current_min_z < min_height:
+    #     z_offset = min_height - current_min_z
+    #     smoothed[:, 2] += z_offset #lift entire trajectory
 
     #safe cage
     if cage is not None:
@@ -93,8 +97,8 @@ def add_yaw(trajectory, smooth_window=8, min_dist=0.01, make_smooth=False) -> np
 def _planned_path(trajectories: list[np.ndarray], labels) -> None:
     plt.figure(figsize=(10, 8))
     ax = plt.axes(projection="3d")
-    ax.set_xlabel("X [m]");
-    ax.set_ylabel("Y [m]");
+    ax.set_xlabel("X [m]")
+    ax.set_ylabel("Y [m]")
     ax.set_zlabel("Z [m]")
 
     n = len(trajectories)
@@ -104,7 +108,9 @@ def _planned_path(trajectories: list[np.ndarray], labels) -> None:
 
     for i, traj in enumerate(trajectories):
         ax.plot(traj[:, 0], traj[:, 1], traj[:, 2], '-o', markersize=3, color=colors[i], label=labels[i])
-        ax.scatter(traj[:, 0], traj[:, 1], traj[:, 2], color=colors[i], s=10, alpha=0.3)
+        ax.scatter(traj[1:, 0], traj[1:, 1], traj[1:, 2], color=colors[i], s=10, alpha=0.3)
+        ax.scatter(traj[0, 0], traj[0, 1], traj[0, 2], color='red', s=100, alpha=0.3,label=f'start -> {labels[i]}')
+
         if traj.shape[1] >= 4:
             for j in range(0, len(traj[:, 0]), 1):
                 u = 0.1 * cos(radians(traj[:, 3][j]))
@@ -118,15 +124,16 @@ def _planned_path(trajectories: list[np.ndarray], labels) -> None:
 def _before_flying(positions):
     plt.figure(figsize=(10, 8))
     ax = plt.axes(projection="3d")
-    ax.set_xlabel("X [m]");
-    ax.set_ylabel("Y [m]");
+    ax.set_xlabel("X [m]")
+    ax.set_ylabel("Y [m]")
     ax.set_zlabel("Z [m]")
-    xs = [s.x for s in positions];
+    xs = [s.x for s in positions]
     ys = [s.y for s in positions]
-    zs = [s.z for s in positions];
+    zs = [s.z for s in positions]
     yaws = [s.yaw for s in positions]
     ax.plot(xs, ys, zs, color='lightsteelblue', linewidth=1)
-    ax.scatter(xs, ys, zs, color='cyan', s=10, alpha=0.6)
+    ax.scatter(xs[1:], ys[1:], zs[1:], color='cyan', s=10, alpha=0.6)
+    ax.scatter(xs[0], ys[0], zs[0], color='red', s=100, alpha=0.3, label=f'start')
 
     for i in range(0, len(xs), 2):
         u = 0.1 * cos(radians(yaws[i]))
