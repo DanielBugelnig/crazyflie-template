@@ -30,7 +30,9 @@ from safety_scoring import VirtualCage
 # Paths
 base_path = Path(__file__).resolve().parents[0]
 save_dir = base_path / 'trajectories'
+processed_dir = base_path / 'processed_waypoints' #to store processed trajectories
 os.makedirs(save_dir, exist_ok=True)
+os.makedirs(processed_dir, exist_ok=True)
 filename = None
 
 # Constants & Globals
@@ -146,37 +148,59 @@ def on_press(key):
 
         elif key.char == 'q':
             if filename is None: update_filename_path()
+
             raw = load_waypoints(filename)
             traj_yaw = add_yaw(filter_waypoints(raw))
             print(f'\nOld # of points: {len(raw)}, new filtered: {len(traj_yaw)}')
-            save_waypoints(traj_yaw, save_dir / f'{filename.stem}_smoothed.csv')
-            plot_waypoints(trajectory=[traj_yaw], labels=['with yaw'])
+            processed_file = processed_dir / filename.name
+            save_waypoints(traj_yaw, processed_file)
+            plot_waypoints(trajectory=[raw, traj_yaw], labels=['raw','with yaw'])
 
         elif key.char == 'f':
             if filename is None or not filename.exists():
+
+
                 update_filename_path()
-                if filename is None or not filename.exists():
-                    print("\nNo valid trajectory file selected.")
+                processed_file = processed_dir / filename.name
+
+                if processed_file.exists():
+                    print(f"\nLoading from: {processed_file}")
+                    file_to_load = processed_file
+                elif filename.exists():
+                    print(f"\nLoading raw original from: {filename}")
+                    file_to_load = filename
+                else:
+                    print(f"\nError: Could not find {filename.name}")
                     return
 
-            print(f"\nLoading trajectory from: {filename}")
-            raw_waypoints = load_waypoints(filename)
-            enhanced_waypoints = add_yaw(filter_waypoints(raw_waypoints), make_smooth=True)
+            # LOADING TRAJECTORY ------------
+            print(f"\nLoading trajectory from: {file_to_load.name}")
+            raw_waypoints = load_waypoints(file_to_load)
 
-            cf = CrazyFlie()
-            cf.logging(enable=True, file=True, level=base.LogLevel.debug)
-            cf.set_natnet_monitor(monitor)
+            if raw_waypoints.shape[1] >= 4:
+                print("Trajectory is already processed (has yaw). Skipping filter.")
+                enhanced_waypoints = raw_waypoints
+            else:
+                print("Processing raw trajectory for flight...")
+                enhanced_waypoints = add_yaw(filter_waypoints(raw_waypoints, cage=cage), make_smooth=True)
 
+            print(f"Total Trajectory points: {len(enhanced_waypoints)}")
+
+            # CHECK TRAJECTORY BEFORE FLYING -----------
             calculator = Trajectory()
             calculator.logging(enable=False, file=False, level=calculator.LogLevel.message)
             calculator.set_count(1)
 
             positions = create_trajectory(calculator, enhanced_waypoints.tolist(), no_yaw=False)
-
             toFly = input('Check trajectory. Enter "y" to continue: ').strip().lower()
-            plot_waypoints(positions,calculator=calculator)
+            plot_waypoints(positions, calculator=calculator)
 
+            # FLYING LOOP -----------
             if toFly is 'y':
+                cf = CrazyFlie()
+                cf.logging(enable=True, file=True, level=base.LogLevel.debug)
+                cf.set_natnet_monitor(monitor)
+
                 try:
                     cf.scan()
                     cf.connect(start_flying=True)
