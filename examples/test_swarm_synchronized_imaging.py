@@ -36,8 +36,8 @@ project_dir = swarm.get_directory()
 #     time.sleep(0.1)
 try:
     # find swarm members
-    swarm.enable_aideck(False)
-    swarm.enable_aideck_continuous(False)  # Enable continuous image streaming
+    swarm.enable_aideck(True)
+    swarm.enable_aideck_continuous(False)  # Disable continuous imaging - use synchronized mode instead
     swarm.scan()
     # swarm.set_natnet_monitor(natnet_monitor)
     swarm.activate_opitrack_monitor()
@@ -62,16 +62,12 @@ try:
     
     while True:
         for position in transformed__verified_coordinates:
-            # dynamic trajectory
-            swarm.fly(position)
+            # synchronized trajectory - images captured at each waypoint
+            swarm.fly(position, photo=True)
             while not swarm.arrived():
-                states = swarm.get_state()
-                for i, state in enumerate(states):
-                    print(f"Drone {i}: Battery = {state.battery:.2f}V")
                 time.sleep(DRONE_DELAY)
 except (*bitcraze.BitcrazeError, KeyboardInterrupt):
     pass
 # land with all drones and stop them
 swarm.land()
 swarm.stop()
-

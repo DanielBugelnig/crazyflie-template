@@ -20,7 +20,7 @@ from threading import Lock as ThreadLock    # synchronizing
 import os  # file paths
 import psutil # system information, wifi ip address
 
-from ..constants import MAC_LOOKUP, POSITION_AVERAGE, DISPLAY_IMAGES, OP_SYSTEM, CRAZYFLIES
+from ..constants import MAC_LOOKUP, DISPLAY_IMAGES, OP_SYSTEM, CRAZYFLIES
 from ..core.base_utils import BaseClass
 from ..core.shared_data import StateManager, State, Flag, Counter
 
@@ -109,6 +109,7 @@ class CrazySwarm(BaseClass):
         self._count = 0
         self._radio_lock = ThreadLock()
         self._enable_aideck = False
+        self._aideck_continuous = False
         self.natnet_monitor = None
         return
     
@@ -233,6 +234,22 @@ class CrazySwarm(BaseClass):
         self._enable_aideck = enable
         return
     
+    def enable_aideck_continuous(self, enable:bool=True):
+        """Enable or disable continuous AI deck image streaming.
+
+        When enabled, AI decks will stream images continuously without waiting
+        for positioning signals. When disabled (default), images are captured only
+        when the drone arrives at a target position.
+
+        Args:
+            enable (bool): If True, enable continuous streaming; if False, use synchronized mode.
+
+        Returns:
+            None
+        """
+        self._aideck_continuous = enable
+        return
+    
     def start(self):
         """Launch worker thread/process for each swarm member and wait for readiness.
 
@@ -260,7 +277,7 @@ class CrazySwarm(BaseClass):
                          "delay": member.drone_delay,           # wait time between operations in seconds
                          "address": member.address,             # radio link address
                          "directory": self._output_directory,   # output directory
-                         "average_count": POSITION_AVERAGE,     # measurements to average when measuring position
+                         "average_count": 1,     # measurements to average when measuring position
                          "log_enable": self._logging,           # enable/disable logging
                          "log_file": self._logging_file,        # log to file/console
                          "log_level": self._logging_level,
@@ -277,7 +294,8 @@ class CrazySwarm(BaseClass):
                             "display": DISPLAY_IMAGES,             # show/hide recorded image stream
                             "log_enable": self._logging,           # enable/disable logging
                             "log_file": self._logging_file,        # log to file/console
-                            "log_level": self._logging_level}      # log severity level
+                            "log_level": self._logging_level,      # log severity level
+                            "continuous": self._aideck_continuous} # continuous streaming mode
             # set up processes
             member.cf_process = Thread(target=cf_worker, kwargs=cf_params, daemon=False, name="drone_" + member.name)
             if self._enable_aideck:

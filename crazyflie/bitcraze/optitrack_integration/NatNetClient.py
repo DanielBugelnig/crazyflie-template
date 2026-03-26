@@ -2038,19 +2038,24 @@ class NatNetClient:
                 # return 4
             if len(data) > 0:
                 # peek ahead at message_id
-                message_id = get_message_id(data)
-                tmp_str = "mi_%1.1d" % message_id
-                if tmp_str not in message_id_dict:
-                    message_id_dict[tmp_str] = 0
-                message_id_dict[tmp_str] += 1
-                print_level = gprint_level()
-                if message_id == self.NAT_FRAMEOFDATA:
-                    if print_level > 0:
-                        if (message_id_dict[tmp_str] % print_level) == 0:
-                            print_level = 1
-                        else:
-                            print_level = 0
-                message_id = self.__process_message(data, print_level)
+                try:
+                    message_id = get_message_id(data)
+                    tmp_str = "mi_%1.1d" % message_id
+                    if tmp_str not in message_id_dict:
+                        message_id_dict[tmp_str] = 0
+                    message_id_dict[tmp_str] += 1
+                    print_level = gprint_level()
+                    if message_id == self.NAT_FRAMEOFDATA:
+                        if print_level > 0:
+                            if (message_id_dict[tmp_str] % print_level) == 0:
+                                print_level = 1
+                            else:
+                                print_level = 0
+                    message_id = self.__process_message(data, print_level)
+                except struct.error as e:
+                    print("WARNING: Corrupted NatNet packet received, skipping. Error: %s" % str(e))
+                except Exception as e:
+                    print("WARNING: Error processing NatNet packet, skipping. Error: %s" % str(e))
                 data = bytearray(0)
 
         return 0

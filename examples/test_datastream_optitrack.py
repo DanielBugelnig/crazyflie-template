@@ -21,7 +21,7 @@ while not natnet_monitor.is_running():
     time.sleep(0.1)
 
 print("NatNet monitor is running.")
-id = 12
+id = 14
 while True:
      pos = natnet_monitor.get_position(id)  # Rigid Body ID 38
      print(f"Position from NatNet RB {id}: {pos}")

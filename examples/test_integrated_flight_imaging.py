@@ -154,6 +154,8 @@ def main():
         print(f"  Continuing with flight test only...")
         ai_deck = None
     
+    
+    time.sleep(15)
     # Perform flight test
     print("\n" + "=" * 70)
     print("FLIGHT TEST: Square Pattern")

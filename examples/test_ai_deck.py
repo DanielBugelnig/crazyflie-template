@@ -6,7 +6,7 @@ from time import sleep
 
 
 from crazyflie.bitcraze.ai_deck import AI_Deck
-from crazyflie.bitcraze.swarm import CrazySwarm
+from crazyflie.bitcraze.swarm import CrazySwarm, SwarmError
 from crazyflie.core.shared_data import StateManager, Flag
 from crazyflie.core.base_utils import LogLevel
 
@@ -35,7 +35,7 @@ def main():
         swarm.logging(enable=True, file=False, level=LogLevel.message)
         directory = swarm.create_directory(swarm.get_path() + os.sep + "datasets")
         clients = swarm._scan_ai()
-    except CrazySwarm.SwarmError:
+    except SwarmError:
         return
     decks:list[multiprocessing.Process] = []
     for client in clients:

@@ -142,6 +142,7 @@ class AI_Deck(BaseClass):
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             self._socket.connect((self._ip, WIFI_SOCKET_PORT))
+            self._socket.settimeout(0.5)  # 0.5 second timeout to be responsive without blocking too long
             self._state.set_connected()
             self._thread = threading.Thread(target=self._image_fetcher, daemon=False, name="image fetching " + self._mac)
             self._thread.start()
@@ -305,13 +306,19 @@ class AI_Deck(BaseClass):
         try:
             while not self._state.get_exit():
                 image = self._get_image()
-                self._thread_lock.acquire()
-                self._last_image.data = image
-                self._last_image.used = False
-                self._thread_lock.release()
+                if image is not None:  # Only update if we got a valid image
+                    self._thread_lock.acquire()
+                    self._last_image.data = image
+                    self._last_image.used = False
+                    self._thread_lock.release()
                 time.sleep(self._delay)
         except (KeyboardInterrupt, AIDeckError):
             pass
+        except socket.timeout:
+            # Socket timeout is expected during normal operation, just continue
+            pass
+        except Exception as e:
+            self.print(f"Error in image fetcher: {e}", self.LogLevel.warning)
         return
     
     def _receive_bytes(self, length):
@@ -323,7 +330,14 @@ class AI_Deck(BaseClass):
         data = bytearray()
         try:
             while len(data) < length:
-                data.extend(self._socket.recv(length - len(data)))
+                chunk = self._socket.recv(length - len(data))
+                if not chunk:
+                    # Connection closed
+                    raise AIDeckError("Connection closed")
+                data.extend(chunk)
+        except socket.timeout:
+            # Timeout - incomplete data, raise so caller knows to retry
+            raise AIDeckError(f"Socket timeout: only received {len(data)}/{length} bytes")
         except KeyboardInterrupt:
             raise KeyboardInterrupt
         except OSError as message:
@@ -383,7 +397,9 @@ class AI_Deck(BaseClass):
 
         except KeyboardInterrupt:
             raise
-
+        except AIDeckError as e:
+            # Timeout or incomplete data - just return None to retry next time
+            return None
         except Exception as e:
             print(f"[ERROR] Unexpected error in _get_image: {e}")
             return None
@@ -426,7 +442,7 @@ class AI_Deck(BaseClass):
     
     """ ---------------------------------------------------------------------------- """
 
-def worker(flag:Flag, counter:Counter, lock:ProcessLock, delay, ip, mac, directory:str, display=True, log_enable=True, log_file=True, log_level=LogLevel.message):
+def worker(flag:Flag, counter:Counter, lock:ProcessLock, delay, ip, mac, directory:str, display=True, log_enable=True, log_file=True, log_level=LogLevel.message, continuous=False):
     """Worker function that manages AI Deck connection and image recording.
 
     Args:
@@ -441,6 +457,7 @@ def worker(flag:Flag, counter:Counter, lock:ProcessLock, delay, ip, mac, directo
         log_enable (bool, optional): Enable or disable logging. Defaults to True.
         log_file (bool, optional): Enable log file output. Defaults to True.
         log_level (LogLevel, optional): Logging verbosity. Defaults to LogLevel.message.
+        continuous (bool, optional): If True, stream images continuously without waiting for positioning signals. Defaults to False.
     """
     deck = AI_Deck(ip, mac)  # initialize object
     deck.logging(log_enable, log_file, log_level, deck.get_path() + sep + "logs" + sep + directory.split(sep)[-1])   # set up logging
@@ -453,36 +470,54 @@ def worker(flag:Flag, counter:Counter, lock:ProcessLock, delay, ip, mac, directo
     deck.connect()  # connect to the socket
     deck.print("deck connected", deck.LogLevel.info)
     try:
-        while True:
-            # exit if required
-            if flag.get_exit():
-                deck.print("disconnecting", deck.LogLevel.info)
-                deck.disconnect()
-                break
-            # wait for the drone to be positioned
-            deck.print("waiting for drone to be on position", deck.LogLevel.info)
-            while (not flag.get_on_position()) and (not flag.get_exit()):
+        if continuous:
+            # Continuous streaming mode - publish images all the time
+            deck.print("starting continuous image streaming", deck.LogLevel.info)
+            while True:
+                # exit if required
+                if flag.get_exit():
+                    deck.print("disconnecting", deck.LogLevel.info)
+                    deck.disconnect()
+                    break
+                # continuously save images - keep trying until one succeeds
+                if deck.save_image():
+                    lock.acquire()
+                    counter.set(deck.get_image_count())
+                    lock.release()
+                # Always sleep a small amount, similar to test_ai_deck.py polling
                 time.sleep(delay)
-            # set state to start recording
-            deck.print("drone positioned", deck.LogLevel.info)
-            if not flag.get_exit():
+        else:
+            # Synchronized mode - wait for positioning signals
+            while True:
+                # exit if required
+                if flag.get_exit():
+                    deck.print("disconnecting", deck.LogLevel.info)
+                    deck.disconnect()
+                    break
+                # wait for the drone to be positioned
+                deck.print("waiting for drone to be on position", deck.LogLevel.info)
+                while (not flag.get_on_position()) and (not flag.get_exit()):
+                    time.sleep(delay)
+                # set state to start recording
+                deck.print("drone positioned", deck.LogLevel.info)
+                if not flag.get_exit():
+                    lock.acquire()
+                    deck.print("start recording", deck.LogLevel.info)
+                    flag.set_recording()
+                    lock.release()
+                # record an image
+                deck.print("waiting for image", deck.LogLevel.info)
+                while not deck.save_image():
+                    time.sleep(delay)
+                deck.print("image from " + deck._mac + " saved", deck.LogLevel.message)
+                # set output variables
                 lock.acquire()
-                deck.print("start recording", deck.LogLevel.info)
-                flag.set_recording()
+                deck.print("signaling to drone", deck.LogLevel.info)
+                counter.set(deck.get_image_count())
+                if not flag.get_exit():
+                    flag.set_image_saved()
                 lock.release()
-            # record an image
-            deck.print("waiting for image", deck.LogLevel.info)
-            while not deck.save_image():
                 time.sleep(delay)
-            deck.print("image from " + deck._mac + " saved", deck.LogLevel.message)
-            # set output variables
-            lock.acquire()
-            deck.print("signaling to drone", deck.LogLevel.info)
-            counter.set(deck.get_image_count())
-            if not flag.get_exit():
-                flag.set_image_saved()
-            lock.release()
-            time.sleep(delay)
     except (AIDeckError, KeyboardInterrupt):
         deck.print("disconnecting", deck.LogLevel.info)
         deck.disconnect()   # shut down
