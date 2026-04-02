@@ -57,7 +57,40 @@ finally:
         print(f"\nSaving full trajectory with {len(actual_trajectory)} points...")
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         save_dir = Path(__file__).parent / "saved_trajectories"
-        filename = save_dir / f"trajectory_{timestamp}.csv"
+        user = input("Enter a name for the trajectory (or press Enter to use default): ").strip()
+        base_name = user if user else f"trajectory_{timestamp}"
+        filename = save_dir / f"{base_name}.csv"
+
         save_waypoints(np.array(actual_trajectory), filename)
     else:
         print("\nNo trajectory data to save.")
+
+
+
+        """
+        
+        
+        
+[Init] Listening to all Rigid Bodies
+resetting requested version to 3 1 0 0 from 0 0 0 0
+MESA-INTEL: error: ../src/intel/vulkan/anv_batch_chain.c:2053: execbuf2 failed: Invalid argument (VK_ERROR_DEVICE_LOST)
+
+thread 'main' panicked at 'Error in Surface::present: Validation Error
+
+Caused by:
+  Parent device is lost
+'
+wgpu-27.0.1/src/backend/wgpu_core.rs:3858
+stack backtrace:
+   6: core::panicking::panic_fmt
+   7: wgpu::backend::wgpu_core::ContextWgpuCore::handle_error_fatal
+   8: wgpu::api::surface_texture::SurfaceTexture::present
+   9: egui_wgpu::winit::Painter::paint_and_update_textures
+  10: <eframe::native::wgpu_integration::WgpuWinitApp as eframe::native::winit_integration::WinitApp>::run_ui_and_paint
+  11: <eframe::native::run::WinitAppWrapper<T> as winit::application::ApplicationHandler<eframe::native::winit_integration::UserEvent>>::window_event
+  12: eframe::native::run::run_wgpu
+
+Troubleshooting Rerun: https://www.rerun.io/docs/getting-started/troubleshooting 
+Report bugs: https://github.com/rerun-io/rerun/issues
+[2026-04-02T13:37:47Z ERROR re_grpc_client::write] Write messages call failed: gRPC error, message: "transport error"
+"""
