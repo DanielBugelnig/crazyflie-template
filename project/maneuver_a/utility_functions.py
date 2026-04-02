@@ -98,3 +98,11 @@ def save_waypoints(trajectory: np.ndarray, filename: Path):
         writer.writerows(trajectory)
 
     print(f"Trajectory successfully saved to {filename}")
+
+
+if __name__ == "__main__":
+    traj_8 = load_waypoints(Path(__file__).parent / "trajectories" / "traj_8_recorded.csv") 
+    for pos in traj_8:
+        pos[2]=0
+
+    plot_waypoints([traj_8])

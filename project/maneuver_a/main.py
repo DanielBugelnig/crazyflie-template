@@ -17,7 +17,7 @@ from threading import Lock, Thread
 from pynput import keyboard
 
 #add project root
-sys.path.append(str(Path(__file__).resolve().parents[3]))
+sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 from crazyflie.bitcraze.optitrack_integration.optitrack import NatNetRigidBodyMonitor
 import crazyflie.core.base_utils as base
@@ -26,7 +26,7 @@ from crazyflie.bitcraze.trajectory import Trajectory
 from crazyflie.bitcraze.crazyflie import CrazyFlie
 
 #utility functions for plotting, saving and loading trajectories for the Maneuvers A
-from maneuver_a_functions import plot_waypoints, load_waypoints, save_waypoints
+from utility_functions import plot_waypoints, load_waypoints, save_waypoints
 
 
 class TrajectoryProcessor:
@@ -194,6 +194,7 @@ class ManeuverAController:
             new_name = input('\nEnter a base name for your trajectory file: ').lower().strip().replace(' ', '_')
             if new_name:
                 self.base_filename = new_name
+                self.last_saved_filename = new_name
                 print(f"Base filename set to: '{self.base_filename}'")
             else:
                 print("Invalid name. Please enter a valid filename.")
