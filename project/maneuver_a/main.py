@@ -128,6 +128,7 @@ class ManeuverAController:
             new_name = input('\nEnter a base name for your trajectory file: ').lower().strip().replace(' ', '_')
             if new_name:
                 self.base_filename = new_name
+                self.last_saved_filename = new_name
                 print(f"Base filename set to: '{self.base_filename}'")
             else:
                 print("Invalid name. Please enter a valid filename.")
