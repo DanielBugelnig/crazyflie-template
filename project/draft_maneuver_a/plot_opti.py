@@ -1,4 +1,4 @@
-#streamlit run /home/anoushka/crazyflie-lib-python/examples/ira_work/crazyflie-template/project/maneuver_a/plot_opti.py
+#streamlit run /home/anoushka/crazyflie-lib-python/examples/ira_work/crazyflie-template/project/draft_maneuver_a/plot_opti.py
 import sys
 import time
 from pathlib import Path
