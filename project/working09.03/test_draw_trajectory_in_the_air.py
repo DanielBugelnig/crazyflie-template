@@ -19,7 +19,7 @@ import pandas as pd
 from matplotlib import pyplot as plt
 from pynput import keyboard
 
-sys.path.append(str(Path(__file__).resolve().parents[1]))
+sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 from crazyflie.bitcraze.optitrack_integration.optitrack import NatNetRigidBodyMonitor
 import crazyflie.core.base_utils as base
@@ -83,7 +83,7 @@ filename = None
 # Constants
 OFFSET_X = 1  # m
 UPDATE_RATE = 10  # Hz
-ID = 38
+ID = 44
 pos = None
 current_waypoints = []
 user = ''
@@ -189,24 +189,27 @@ def on_press(key):
             raw = load_waypoints(filename)
             print(raw)
 
-            trajectory_smoothed = filter_waypoints(raw)
+            trajectory_smoothed = filter_waypoints(raw,threshold=0.01)
             traj_yaw = add_yaw(trajectory_smoothed)
 
             print(f'Old # of points: {len(raw)}, new filtered: {len(traj_yaw)}')
             
             save_waypoints_2(traj_yaw, 'test_traj_save.csv')
-            plot_waypoints(trajectory=[traj_yaw], labels=['with yaw'])
+            plot_waypoints(trajectory=[traj_yaw,raw], labels=['with yaw','raw'])
 
 
         elif key.char == 'f':
          
 
             # Ask user for file if not set
+
+
             if filename is None or not filename.exists():
                 update_filename_path()
                 if filename is None or not filename.exists():
                     print("No valid trajectory file selected.")
                     return
+                
 
             print(f"\nLoading trajectory from: {filename}")
 
@@ -255,38 +258,7 @@ def on_press(key):
             finally:
                 cf.disconnect()
                     
-        # elif key.char == 'f':
-        #     if filename is None: update_filename_path()
 
-        #     print(filename)
-        #     raw_waypoints = load_waypoints(filename)
-        #     enhanced_waypoints = add_yaw(filter_waypoints(raw_waypoints), make_smooth=True)
-
-        #     #add for flying
-        #     cf = CrazyFlie()
-        #     cf.logging(enable=True, file=True, level=base.LogLevel.debug)
-        #     cf.set_natnet_monitor(monitor)
-
-        #     calculator = Trajectory()
-        #     calculator.logging(enable=False, file=False, level=calculator.LogLevel.message)
-        #     calculator.set_count(1)  # amount of CF
-
-        #     positions = create_trajectory(calculator, enhanced_waypoints.tolist(),no_yaw=False)
-        #     plot_waypoints(positions)
-
-        #     if input('Check if continue Y or N: ').lower().strip() == 'y':
-        #         try:
-        #             cf.scan()  # scan for drones
-        #             cf.connect(start_flying=True)
-        #             for position in positions:
-        #                 cf.fly(position)
-        #                 while not cf.arrived(position):
-        #                     time.sleep(0.1)
-        #                 time.sleep(0.2)
-        #             cf.land()
-        #         except (bitcraze.CrazyFlieError, KeyboardInterrupt):
-        #             pass
-        #         cf.disconnect()
 
     except AttributeError:
         pass
@@ -305,14 +277,19 @@ def update_filename_path():
 
 def main():
     global filename, monitor
+
+    #start optitrack
     monitor.start()
 
+    #start thread for position tracking
     tracker = Thread(target=object_tracking, args=(monitor, ID), daemon=True)
     tracker.start()
-
     time.sleep(2)
+
+    #ask user for filename
     update_filename_path()
 
+    #start pynput for keyboard input
     listener = keyboard.Listener(on_press=on_press)
     listener.start()
     listener.join()

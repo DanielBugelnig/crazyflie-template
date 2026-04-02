@@ -224,7 +224,61 @@ def save_waypoints_2(trajectory_way_points,filename=None):
             writer.writerow(p)
 
     print(f"Trajectory saved to {filename}")
+import time
+from crazyflie.constants import MOCAP_TX_RATE_HZ
+from test_draw_trajectory_in_the_air import UPDATE_RATE
 
+def get_average_position(monitor, rigid_body_id, update_rate=UPDATE_RATE):
+    """
+    Get the average position of a rigid body over multiple samples.
+
+    Args:
+        monitor: NatNetRigidBodyMonitor instance
+        rigid_body_id: Rigid body ID to track
+        samples: Number of samples to average (default: 100)
+        interval: Time interval between samples in seconds (default: 0.01)
+        Update_Rate: Update rate in Hz (default: 10)
+
+    Returns:
+        tuple: (x, y, z) mean position, or None if no valid positions received
+    """
+    sum_x, sum_y, sum_z = 0.0, 0.0, 0.0
+    count = 0
+    start_time = time.time()
+    while time.time() - start_time < 1.0 / update_rate:
+        sample = monitor.get_position(rigid_body_id)
+        if sample is not None:
+            sum_x += sample[0]
+            sum_y += sample[1]
+            sum_z += sample[2]
+            count += 1
+        time.sleep(1.0 / MOCAP_TX_RATE_HZ)
+        # print(f"Position from NatNet RB {rigid_body_id}: {pos}, type {type(pos)}")
+
+    if count > 0:
+        mean_pos = (sum_x / count, sum_y / count, sum_z / count)
+        # print(f"\nMean position over {count} samples: {mean_pos}")
+        return mean_pos
+    else:
+        print("\nNo valid positions received")
+        return None
+
+
+from crazyflie.bitcraze.trajectory import Trajectory
+from crazyflie.bitcraze.crazyflie import CrazyFlie
+##
+def create_trajectory(calculator, list_of_pos, no_yaw=False) -> list:
+    return [
+        calculator.get_position(
+            x=item[0],
+            y=item[1],
+            z=item[2],
+            yaw=(item[3] if len(item) > 3 and not no_yaw else 0),
+            pitch=0,
+            roll=0
+        )
+        for item in list_of_pos
+    ]
 
 def main():
     user=input('What to load: ')
