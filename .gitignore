@@ -7,3 +7,5 @@ build/
 venv
 cache/
 *datasets*
+/crazyflie/constants.py
+/configs
