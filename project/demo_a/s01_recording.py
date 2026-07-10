@@ -65,6 +65,7 @@ monitor = NatNetRigidBodyMonitor()
 
 # >>> Flags
 is_typing, shutdown_flag, recording = False, False, False
+pending_stop_processing = None
 
 # >>> Accuracy scoring
 evaluator = AccuracyEvaluator(ideal_trajectory=ideal_trajectory, scale=scale, alpha=alpha)
@@ -72,7 +73,7 @@ evaluator = AccuracyEvaluator(ideal_trajectory=ideal_trajectory, scale=scale, al
 
 
 def main():
-    global is_typing, save_filename
+    global is_typing, save_filename, pending_stop_processing
 
     # Setup OptiTrack
     monitor.start()
@@ -96,6 +97,13 @@ def main():
             if is_typing: #to take input from user out of keyboard listener thread
                 save_filename = prompt_for_filename(save_dir, processed_dir)
                 is_typing = False
+
+            # Handle stop/save/plot/evaluation in main thread (Matplotlib must run here)
+            if pending_stop_processing is not None:
+                waypoints_copy = pending_stop_processing
+                pending_stop_processing = None
+                process_recording_stop(waypoints_copy)
+
             time.sleep(0.1) #refresh time
 
     except KeyboardInterrupt:
@@ -114,7 +122,7 @@ def main():
 
 def on_press(key:Key):
     """Handles all keyboard inputs during operation"""
-    global recording, current_waypoints, is_typing, shutdown_flag
+    global recording, current_waypoints, is_typing, shutdown_flag, pending_stop_processing
 
     if is_typing:   return
 
@@ -145,25 +153,7 @@ def on_press(key:Key):
                 if not waypoints_copy:
                     print('Error: No waypoints were recorded!')
                     return
-
-                print('Saving...')
-                save_waypoints(waypoints_copy, save_dir / save_filename)
-
-                # Plot of raw trajectory from optitrack
-                plot_waypoints([np.array(waypoints_copy)], labels=['Raw trajectory'])
-
-                #- - - - Accuracy - - - - - - - - - - -
-                print('Evaluating accuracy...')
-                #Process the whole trajectory at once
-                avg_dist, final_score, scores, new_recorded_points = evaluator.evaluate_full_trajectory(resample_trajectory(waypoints_copy))
-                print(f"\n- - - - - - FLIGHT SUMMARY - - - - - -")
-                print(f"Average Distance Error: {avg_dist:.3f} meters")
-                print(f"Final Accuracy Score:   {final_score:.2f}%")
-                print(f"- - - - - - - - - - - - - - - - - - - \n")
-
-                # Plot the results in 3D with the scores
-                evaluator.plot_results(new_recorded_points, scores, final_score)
-                #- - - - - - - - - - - - - - -
+                pending_stop_processing = waypoints_copy
 
         elif key.char =='q':
             shutdown_flag = True
@@ -171,6 +161,34 @@ def on_press(key:Key):
 
     except AttributeError:
         pass
+
+
+def process_recording_stop(waypoints_copy):
+    """Process saving, plotting, and scoring on main thread."""
+    print('Saving...')
+    save_waypoints(waypoints_copy, save_dir / save_filename)
+
+    # Plot of raw trajectory from optitrack
+    plot_waypoints([np.array(waypoints_copy)], labels=['Raw trajectory'])
+
+    #- - - - Accuracy - - - - - - - - - - -
+    print('Evaluating accuracy...')
+    # Process the whole trajectory at once
+    avg_dist, final_score, scores, new_recorded_points = evaluator.evaluate_full_trajectory(
+        resample_trajectory(waypoints_copy)
+    )
+    completion_ratio = evaluator.last_completion_ratio
+    base_accuracy = evaluator.last_base_accuracy
+    print(f"\n- - - - - - FLIGHT SUMMARY - - - - - -")
+    print(f"Average Distance Error: {avg_dist:.3f} meters")
+    print(f"Base Accuracy Score:    {base_accuracy:.2f}%")
+    print(f"Completion Ratio:       {completion_ratio:.2%}")
+    print(f"Final Accuracy Score:   {final_score:.2f}%")
+    print(f"- - - - - - - - - - - - - - - - - - - \n")
+
+    # Plot the results in 3D with the scores
+    evaluator.plot_results(new_recorded_points, scores, final_score)
+    #- - - - - - - - - - - - - - -
 
 
 #------- OPTITRACK LOCATION

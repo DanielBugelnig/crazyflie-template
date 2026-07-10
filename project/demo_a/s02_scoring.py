@@ -32,6 +32,8 @@ class AccuracyEvaluator:
         self.scale = scale
         self.alpha = alpha
         self.smooth_score = None
+        self.last_completion_ratio = 0.0
+        self.last_base_accuracy = 0.0
 
     def _point_to_segment_distance(self, P:ndarray, A:ndarray, B:ndarray):
         """
@@ -91,9 +93,13 @@ class AccuracyEvaluator:
 
         return raw_score, self.smooth_score, best_dist, best_closest
 
-    def evaluate_full_trajectory(self, recorded_points:ndarray, threshold=0.05):
+    def evaluate_full_trajectory(self, recorded_points:ndarray, threshold=0.05, coverage_threshold=None):
         """
-        Processes a full array of points, calculates overall accuracy, and applies a completion ratio penalty.
+        Processes a full array of points, calculates overall accuracy, and applies a
+        completion-ratio penalty so incomplete trajectories score lower.
+
+        Completion ratio is based on how much of the ideal trajectory is actually
+        covered by recorded points (not only how far along the path the flight reached).
 
         Returns:
             - The average distance error
@@ -103,8 +109,16 @@ class AccuracyEvaluator:
         """
         # Reset state for a fresh run
         self.smooth_score = None
+        self.last_completion_ratio = 0.0
+        self.last_base_accuracy = 0.0
 
         recorded_points = np.array(recorded_points)
+        if recorded_points.size == 0:
+            return 0.0, 0.0, [], []
+
+        if recorded_points.ndim != 2 or recorded_points.shape[0] == 0:
+            return 0.0, 0.0, [], []
+
         recorded_points[:, 2] = self.height  # force height from 2D ideal traj
 
         # trim closest points
@@ -121,12 +135,35 @@ class AccuracyEvaluator:
             scores.append(smooth)
 
         if not distances:
-            return 0.0, 0.0, []
+            return 0.0, 0.0, [], []
 
         avg_dist = float(np.mean(distances))
         base_accuracy = float(np.mean(scores))
 
-        return avg_dist, base_accuracy, scores, filtered
+        # Completion ratio from ideal-point coverage:
+        # percentage of ideal trajectory points that have at least one recorded
+        # point within a distance threshold.
+        rec_xy = np.array(filtered)[:, :2]
+        ideal_xy = self.trajectory[:, :2]
+
+        if coverage_threshold is None:
+            coverage_threshold = max(0.05, self.scale)
+
+        # Pairwise distances (ideal_points x recorded_points)
+        dxy = ideal_xy[:, None, :] - rec_xy[None, :, :]
+        pairwise_dist = np.linalg.norm(dxy, axis=2)
+
+        min_dist_per_ideal_point = np.min(pairwise_dist, axis=1)
+        covered_points = np.sum(min_dist_per_ideal_point <= coverage_threshold)
+        completion_ratio = float(np.clip(covered_points / len(ideal_xy), 0.0, 1.0))
+
+        # Penalize incomplete trajectories (linear penalty)
+        final_accuracy = base_accuracy * completion_ratio
+
+        self.last_base_accuracy = base_accuracy
+        self.last_completion_ratio = completion_ratio
+
+        return avg_dist, final_accuracy, scores, filtered
 
     def plot_results(self, recorded_points:ndarray, scores_list:list, final_accuracy=None):
         """
@@ -244,6 +281,8 @@ def main():
         test_points = resample_trajectory(test_points, N=100)
         print("Evaluating trajectory...")
         avg_dist, final_score, scores, rec = evaluator.evaluate_full_trajectory(np.array(test_points))
+        completion_ratio = evaluator.last_completion_ratio
+        base_accuracy = evaluator.last_base_accuracy
 
         for i, pt in enumerate(test_points[:5]):
             print(f"Point {i}: Dist: {avg_dist:.3f}m | Instant Score: {scores[i]:.2f}%")
@@ -252,6 +291,8 @@ def main():
         print("\n--- FLIGHT SUMMARY ---")
         print(f"Points evaluated:       {len(test_points)} (Ideal was {len(ideal_points)})")
         print(f"Average Distance Error: {avg_dist:.3f} meters")
+        print(f"Base Accuracy:          {base_accuracy:.2f}%")
+        print(f"Completion Ratio:       {completion_ratio:.2%}")
         print(f"Final Accuracy (w/ penalty): {final_score:.2f}%")
         print("----------------------\n")
 

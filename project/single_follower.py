@@ -259,4 +259,4 @@ flight_thread = Thread(target=flight_control, args=(cf, UPDATE_RATE), daemon=Tru
 flight_thread.start()
 
 # Run plotting on main thread (required by Matplotlib GUI backends)
-plot_live_data()
+#plot_live_data()
